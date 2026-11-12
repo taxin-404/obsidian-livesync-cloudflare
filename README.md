@@ -119,6 +119,23 @@ Both paths are idempotent.
 
 One vault per account is the safe assumption. If sync starts failing at the quota, switch clients to **Periodic and Events → 60 s**, which lets the Durable Object hibernate.
 
+## Troubleshooting
+
+### “Replication failed on an unattended path.” in the status bar
+
+With plugin **1.0.49**, this appears when **Sync on save**, **Sync on editor save** or **Sync on file open** is enabled next to continuous LiveSync. Those toggles schedule an extra one-shot replication; the plugin rejects it because the continuous replication is already running, and reports that rejection as a failure. Nothing is lost — continuous replication has already sent the change, and every request still succeeds.
+
+The plugin's own **Synchronization Preset** (LiveSync settings → *Synchronization Preset* → **LiveSync**) avoids it by turning all event triggers off. Keep those three toggles off:
+
+```jsonc
+"liveSync": true,
+"syncOnSave": false,
+"syncOnEditorSave": false,
+"syncOnFileOpen": false
+```
+
+If you prefer the event-driven style, enable **Synchronization Preset → Periodic with batch** instead and turn continuous LiveSync off; you lose real-time push, but the DO can hibernate between syncs.
+
 ## Operations
 
 ```sh
