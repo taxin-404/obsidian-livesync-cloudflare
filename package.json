@@ -1,0 +1,103 @@
+{
+  "name": "cloudflare-pouchdb",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "cloudflare": {
+    "bindings": {
+      "COUCHDB_PASSWORD": {
+        "description": "Choose a strong, unique password. You will enter this password in Obsidian LiveSync."
+      },
+      "COUCHDB_USERNAME": {
+        "description": "The username to enter in Obsidian LiveSync. The default is `admin`."
+      },
+      "CORS_ORIGINS": {
+        "description": "Allowed browser origins. The default supports Obsidian desktop, mobile, and local development."
+      },
+      "BACKUP_DATABASE": {
+        "description": "Use the same database name you will enter in Obsidian LiveSync. Default: `vault`."
+      },
+      "BACKUP_ENABLED": {
+        "description": "Keep true for daily R2 backups, or set false to deploy without R2 or its checkout using the storage deployment script."
+      },
+      "BACKUP_DAILY": {
+        "description": "Daily recovery points to retain. Default: `30`."
+      },
+      "BACKUP_WEEKLY": {
+        "description": "Weekly recovery points to retain. Default: `8`."
+      },
+      "BACKUP_MONTHLY": {
+        "description": "Monthly recovery points to retain. Default: `24`."
+      },
+      "BACKUP_BUCKET": {
+        "description": "Private R2 bucket for this installation's vault backups. Use a separate bucket for each installation."
+      }
+    }
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/patch-commonlib-create-cas.mjs",
+    "check": "npm run check:dependencies && npm run check:storage && npm run check --workspaces --if-present",
+    "check:dependencies": "node --test test/production-dependencies.test.mjs && node scripts/check-production-dependencies.mjs",
+    "check:storage": "tsc --noEmit",
+    "test": "npm run test:dependencies && vitest run test/chunk-publication.test.ts test/sequence-read.test.ts test/worker.test.ts test/backup.test.ts test/backup-replication.test.ts test/diagnostic-stream.test.ts && vitest run test/commonlib-bridge.test.ts && vitest run test/vault-rpc.test.ts test/vault-conflicts.test.ts test/vault-path-policy.test.ts && vitest run test/mcp-storage-integration.test.ts",
+    "test:dependencies": "node --test test/production-dependencies.test.mjs && node --experimental-strip-types --test test/backup-cli.test.mjs",
+    "fixture:livesync": "node scripts/generate-livesync-fixture.mjs",
+    "test:current-pouchdb": "vitest run test/current-pouchdb.test.ts",
+    "test:all": "npm test && npm run test --workspaces --if-present && npm run test:staging-config && npm run test:diagnostics && npm run test:deploy",
+    "test:staging-config": "node --test test/staging-config.test.mjs",
+    "test:upstream-pouchdb": "npm run test:current-pouchdb",
+    "types": "npm run types:storage && npm run types --workspaces --if-present",
+    "types:check": "npm run types:check:storage && npm run types:check --workspaces --if-present",
+    "types:storage": "wrangler types --strict-vars=false",
+    "types:check:storage": "wrangler types --strict-vars=false --check",
+    "deploy": "npm run deploy:storage && npm run deploy:mcp",
+    "deploy:storage": "node scripts/deploy-storage.mjs wrangler.deploy.jsonc \"\"",
+    "deploy:mcp": "wrangler deploy --config apps/cloudflare-obsidian-mcp/wrangler.deploy.jsonc --env \"\"",
+    "dry-run": "npm run dry-run:storage && npm run dry-run --workspaces --if-present",
+    "dry-run:storage": "node scripts/deploy-storage.mjs wrangler.jsonc \"\" --dry-run --outdir dist/storage",
+    "deploy:dev": "npm run deploy:storage:dev && npm run deploy:mcp:dev",
+    "deploy:storage:dev": "node scripts/deploy-storage.mjs wrangler.deploy.jsonc dev",
+    "deploy:mcp:dev": "wrangler deploy --config apps/cloudflare-obsidian-mcp/wrangler.deploy.jsonc --env dev",
+    "backup": "node --experimental-strip-types scripts/backup.mjs",
+    "test:backup": "vitest run test/backup.test.ts test/backup-replication.test.ts && node --experimental-strip-types --test test/backup-cli.test.mjs",
+    "diagnostics": "node scripts/diagnostics.mjs",
+    "test:diagnostics": "node --test test/diagnostics.test.mjs",
+    "deploy:storage:template": "node scripts/deploy-storage.mjs wrangler.jsonc \"\"",
+    "test:deploy": "node --test test/deploy-storage.test.mjs"
+  },
+  "dependencies": {
+    "@cloudflare-obsidian-livesync/contracts": "workspace:*",
+    "@robince/pouchdb-adapter-cloudflare-do": "1.1.2-cloudflare-do.1",
+    "@vrtmrz/livesync-commonlib": "0.1.23",
+    "markdown-it": "14.3.3",
+    "pouchdb-adapter-http": "^9.0.0",
+    "pouchdb-adapter-sqlite-core": "npm:@robince/pouchdb-adapter-sqlite-core@1.1.2-cloudflare-do.1",
+    "pouchdb-core": "^9.0.0",
+    "pouchdb-replication": "^9.0.0",
+    "xxhash-wasm-102": "npm:xxhash-wasm@1.1.0",
+    "yaml": "2.9.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.4.7",
+    "@modelcontextprotocol/client": "2.3.1",
+    "@types/markdown-it": "^14.2.0",
+    "@types/node": "^24.0.0",
+    "@types/pouchdb-core": "^7.0.15",
+    "pouchdb-find": "^9.0.0",
+    "pouchdb-mapreduce": "^9.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.152.0"
+  },
+  "overrides": {
+    "undici": "7.30.1",
+    "zod": "4.6.7"
+  },
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  }
+}

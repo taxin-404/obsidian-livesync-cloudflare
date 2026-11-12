@@ -1,0 +1,21 @@
+{
+  "name": "@cloudflare-obsidian-livesync/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "npm run test:build-storage && vitest run --config vitest.config.ts && vitest run --config vitest.worker.config.ts",
+    "test:build-storage": "wrangler deploy --dry-run --config ../../wrangler.jsonc --outdir dist/test-storage",
+    "types": "wrangler types --strict-vars=false",
+    "types:check": "wrangler types --strict-vars=false --check",
+    "dry-run": "wrangler deploy --dry-run --outdir ../../dist/mcp"
+  },
+  "dependencies": {
+    "@cloudflare-obsidian-livesync/contracts": "0.1.0",
+    "@cloudflare/workers-oauth-provider": "0.10.3",
+    "@modelcontextprotocol/server": "2.3.1",
+    "agents": "0.30.1",
+    "zod": "4.6.7"
+  }
+}
