@@ -184,6 +184,30 @@ The plugin's own **Synchronization Preset** (LiveSync settings → *Synchronizat
 
 If you prefer the event-driven style, enable **Synchronization Preset → Periodic with batch** instead and turn continuous LiveSync off; you lose real-time push, but the DO can hibernate between syncs.
 
+### A second vault does not sync: “Remote database is locked”
+
+If a rebuild, reset or interrupted onboarding ran on one device, the plugin
+marks the remote database as locked and records only that device's node ID in
+`_local/obsydian_livesync_milestone`. Any other vault is then refused with
+**Remote database is locked** and replication never starts — the second vault
+looks configured but stays empty.
+
+Check the server:
+
+```sh
+curl -u admin:PASSWORD https://<worker>/vault/_local/obsydian_livesync_milestone
+```
+
+`"locked": true` with a single entry in `accepted_nodes` is the cause. On a
+device that is already accepted (or after confirming the second vault holds
+nothing you need), open LiveSync settings and use **Unlock the remote
+database**, or in the locked dialog choose **Unlock**. The next sync adds each
+device's node ID to `accepted_nodes` automatically; `"locked": false` accepts
+new devices without further steps.
+
+Do not unlock a database that is genuinely mid-rebuild on another device —
+finish or reset that rebuild first, then unlock.
+
 ## Operations
 
 ```sh
