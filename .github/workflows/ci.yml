@@ -23,4 +23,4 @@ jobs:
       - run: npm ci
       - run: npm run check:storage
       - run: npm run test:upstream
-      - run: npx vitest run test/worker.test.ts test/backup.test.ts test/sequence-read.test.ts
+      - run: npm test
