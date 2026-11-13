@@ -187,7 +187,7 @@ The build log ends with something like:
 Total Upload: ... KiB / gzip: ... KiB
 Uploaded obsidian-sync (x.xx sec)
 Deployed obsidian-sync triggers
-  https://obsidian-sync.tes1ing.workers.dev
+  https://obsidian-sync.<account-subdomain>.workers.dev
 ```
 
 The first build deploys the same code that is running now, so Obsidian keeps
@@ -196,7 +196,7 @@ working. The `COUCHDB_PASSWORD` Worker secret is left in place.
 ## Verify
 
 ```sh
-curl -u admin:'YOUR_PASSWORD' https://obsidian-sync.tes1ing.workers.dev/vault
+curl -u admin:'YOUR_PASSWORD' https://obsidian-sync.<account-subdomain>.workers.dev/vault
 ```
 
 Expect JSON with `"doc_count"` and `"update_seq"`. For live request logs:

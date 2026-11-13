@@ -122,7 +122,7 @@ console.log(uri.replace(/:[^:@/]*@/, ':***@'));
 "
 ```
 
-Expected: one line `sls+https://admin:***@live.obsidian-sync.workers.dev/?db=vault`. Anything else means the envelope is wrong; stop and fix before continuing.
+Expected: one line `sls+https://admin:***@<worker>.<subdomain>.workers.dev/?db=vault`. Anything else means the envelope is wrong; stop and fix before continuing.
 
 - [ ] **Step 6: Commit**
 
@@ -529,7 +529,7 @@ git commit -m "Expose rotation and drift checks as npm scripts"
 
 - [ ] **Step 1: Confirm the deployment is currently consistent**
 
-Run: `npm run check:secrets -- --vault /home/taxin/Documents/notes`
+Run: `npm run check:secrets -- --vault ~/Documents/notes`
 Expected: `server password`, `setup page gate` and `setup URI password` green;
 `setup URI device profile` **red**, naming the ID derivation key, and
 `vault connection` **red**, because the live legacy `encryptedCouchDBConnection`
@@ -538,7 +538,7 @@ work found; do not "fix" them by editing config.
 
 - [ ] **Step 2: Dry run**
 
-Run: `npm run rotate:password -- --vault /home/taxin/Documents/notes --dry-run`
+Run: `npm run rotate:password -- --vault ~/Documents/notes --dry-run`
 Expected: a summary naming the three secrets, the new URI host and database, the five verification steps, no secrets, and no changes to `data.json` (`git status` clean, file mtime unchanged).
 
 - [ ] **Step 3: Ask the user before the real rotation**
@@ -547,7 +547,7 @@ The real run changes the live password and forces every paired device to re-pair
 
 - [ ] **Step 4: Real rotation**
 
-Close Obsidian, then `npm run rotate:password -- --vault /home/taxin/Documents/notes`. Expected: all steps pass, `check:secrets` afterwards is **fully green** (including `setup URI device profile`), `/vault` answers 200 with the new password and 401 with the old, and `docs`/`README` match the behaviour.
+Close Obsidian, then `npm run rotate:password -- --vault ~/Documents/notes`. Expected: all steps pass, `check:secrets` afterwards is **fully green** (including `setup URI device profile`), `/vault` answers 200 with the new password and 401 with the old, and `docs`/`README` match the behaviour.
 
 - [ ] **Step 5: Restart Obsidian and confirm sync**
 
