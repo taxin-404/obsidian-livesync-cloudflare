@@ -60,6 +60,18 @@ export function createAdapters(vaultDir) {
   };
 }
 
+/**
+ * Turns a failed preflight into one sentence the operator can act on. Wrangler
+ * reports an ambiguous account separately from a missing Worker, and the two
+ * need different fixes.
+ */
+export function preflightFailure(worker, stderr = '') {
+  if (/more than one account/i.test(stderr)) {
+    return 'Wrangler can see more than one Cloudflare account — pass --account-id <id> or set CLOUDFLARE_ACCOUNT_ID; nothing was changed';
+  }
+  return `Worker "${worker}" is not reachable in this account — pass --worker <name> or set CLOUDFLARE_ACCOUNT_ID; nothing was changed`;
+}
+
 export function createSecretPutter(worker, accountId) {
   const env = accountId ? { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId } : process.env;
   let checked = false;
@@ -72,11 +84,7 @@ export function createSecretPutter(worker, accountId) {
       env,
     });
     if (result.error) throw result.error;
-    if (result.status !== 0) {
-      throw new Error(
-        `Worker "${worker}" is not reachable in this account — pass --worker <name> or set CLOUDFLARE_ACCOUNT_ID; nothing was changed`,
-      );
-    }
+    if (result.status !== 0) throw new Error(preflightFailure(worker, result.stderr));
     checked = true;
   };
 

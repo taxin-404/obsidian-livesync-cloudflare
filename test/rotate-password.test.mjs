@@ -159,7 +159,10 @@ test('rolls back and keeps local files when the old password still authenticates
   const vault = await fixture();
   const fake = await deployment(vault, { fetchAuth: async () => 200 });
   const before = await snapshot(vault);
-  await assert.rejects(() => rotate({ ...vault, ...fake }), /old password still authenticates.*restored/s);
+  await assert.rejects(
+    () => rotate({ ...vault, ...fake, verifyAttempts: 1, verifyDelayMs: 0 }),
+    /old password still authenticates.*restored/s,
+  );
   assert.deepEqual(fake.calls.map(([name]) => name), [
     'SETUP_URI',
     'SETUP_URI_PASSPHRASE',
@@ -169,6 +172,30 @@ test('rolls back and keeps local files when the old password still authenticates
     'SETUP_URI',
   ]);
   assert.deepEqual(await snapshot(vault), before);
+});
+
+test('retries verification while the old password is still accepted', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault);
+  let oldChecks = 0;
+  const fetchAuth = async (candidate) => {
+    if (candidate === vault.password) {
+      oldChecks++;
+      return oldChecks <= 2 ? 200 : 401;
+    }
+    return 200;
+  };
+  const sleeps = [];
+  const result = await rotate({
+    ...vault,
+    ...fake,
+    fetchAuth,
+    verifyDelayMs: 1,
+    sleep: async (ms) => sleeps.push(ms),
+  });
+  assert.equal(oldChecks, 3, 'the pre-push check plus two verification attempts');
+  assert.deepEqual(sleeps, [1]);
+  assert.equal((await readVault(vault.vaultDir)).remote.password, result.password);
 });
 
 test('fails before any push when the local files cannot be staged', async () => {

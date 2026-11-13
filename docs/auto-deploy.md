@@ -272,10 +272,11 @@ Both commands assume the page gate uses `COUCHDB_PASSWORD`: leave
 `PAGE_PASSWORD` unset or set it to the same value, otherwise the page cannot be
 read and rotation refuses before touching the server.
 
-Local writes are staged first and renamed into place after verification. If a
-run is ever interrupted, check `<password-file>.tmp` and
-`data.json.tmp` next to the real files before retrying: one of them may already
-hold the new password or the encrypted settings.
+Local writes are staged first and renamed into place after verification. The
+verification retries for about ten seconds, because a Worker secret can take a
+moment to reach every isolate. If a run is ever interrupted, check
+`<password-file>.tmp` and `data.json.tmp` next to the real files before retrying:
+one of them may already hold the new password or the encrypted settings.
 
 ## Troubleshooting
 

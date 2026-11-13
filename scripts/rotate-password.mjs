@@ -18,6 +18,13 @@ const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0
 const PASSWORD_LENGTH = 28;
 const SETUP_PASSPHRASE_BYTES = 24;
 
+// A Worker secret change can take a moment to reach every isolate, so a single
+// failed check is not proof that the rotation failed.
+const VERIFY_ATTEMPTS = 6;
+const VERIFY_DELAY_MS = 2000;
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 function randomBytes(length) {
   return crypto.getRandomValues(new Uint8Array(length));
 }
@@ -149,7 +156,27 @@ async function verifyPage({ fetchPage, password, setupUri, setupPassphrase, newP
   if (served.couchDB_PASSWORD !== newPassword) throw new Error('the served setup URI does not carry the new password');
 }
 
-async function verifyNewPassword({ fetchAuth, fetchPage, previousPassword, password, setupUri, setupPassphrase }) {
+/**
+ * Waits for the whole deployment to agree on the new password. Each attempt
+ * checks the new password, the old password and the served page, so a retry
+ * never accepts a mix of old and new isolates.
+ */
+async function verifyNewPassword(options) {
+  const { attempts = VERIFY_ATTEMPTS, delayMs = VERIFY_DELAY_MS, sleep = defaultSleep } = options;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await verifyPasswordOnce(options);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts) await sleep(delayMs);
+    }
+  }
+  throw new Error(`${lastError.message} (checked ${attempts} times)`);
+}
+
+async function verifyPasswordOnce({ fetchAuth, fetchPage, previousPassword, password, setupUri, setupPassphrase }) {
   const newStatus = await fetchAuth(password);
   if (newStatus !== 200) throw new Error(`the server rejected the new password (status ${newStatus})`);
   const oldStatus = await fetchAuth(previousPassword);
@@ -195,6 +222,9 @@ export async function rotate(options) {
     random = randomBytes,
     dryRun = false,
     force = false,
+    verifyAttempts = VERIFY_ATTEMPTS,
+    verifyDelayMs = VERIFY_DELAY_MS,
+    sleep = defaultSleep,
   } = options;
 
   if (obsidianRunning() && !force) {
@@ -287,6 +317,9 @@ export async function rotate(options) {
       password,
       setupUri: built.uri,
       setupPassphrase,
+      attempts: verifyAttempts,
+      delayMs: verifyDelayMs,
+      sleep,
     });
   } catch (error) {
     await discardFiles([staged.passwordTemporary, staged.vaultTemporary]);
