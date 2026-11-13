@@ -105,4 +105,4 @@ History generally uses short imperative subjects such as “Add single-vault R2 
 
 ## Security & Configuration
 
-Keep credentials in ignored `.dev.vars` files or Worker secrets. Never commit passwords or local `wrangler.deploy.jsonc` files. Use `DEPLOY.md` for deployment: `npm run deploy` publishes both Workers.
+Keep credentials in ignored `.dev.vars` files or Worker secrets. Never commit passwords or local `wrangler.deploy.jsonc` files. `npm run deploy` publishes the storage Worker from `wrangler.jsonc`; the MCP Worker is `deploy:mcp` and is not deployed here.

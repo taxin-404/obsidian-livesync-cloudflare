@@ -91,8 +91,16 @@ git clone <this repo> && cd <repo>
 npm ci
 cp .dev.vars.example .dev.vars        # set a strong COUCHDB_PASSWORD
 npx wrangler login
-npm run deploy:storage -- --secrets-file .dev.vars
+npm run deploy -- --secrets-file .dev.vars
 ```
+
+`npm run deploy` publishes the storage Worker only, from `wrangler.jsonc` —
+no extra config file and no API token. (`npm run deploy:storage` is the
+upstream variant that reads a local, gitignored `wrangler.deploy.jsonc`, and
+`deploy:mcp` publishes the MCP Worker we do not use.)
+
+If the account has more than one Cloudflare account, select it when Wrangler
+prompts, or export `CLOUDFLARE_ACCOUNT_ID` first.
 
 The deployment creates the Worker, its SQLite Durable Object, the private R2 bucket, and the password secret. The URL is printed at the end.
 

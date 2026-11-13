@@ -28,7 +28,18 @@ export function deployStorage([configPath, environment, ...args]) {
     throw new Error('Set configuration, environment and variables in the deployment config, not extra Wrangler options.');
   }
   const source = resolve(configPath);
-  const config = deploymentConfig(readFileSync(source, 'utf8'), environment);
+  let text;
+  try {
+    text = readFileSync(source, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(
+        `${configPath} is missing. Run "npm run deploy" to deploy wrangler.jsonc, or create ${configPath} with the Worker name, bucket and environment you want.`,
+      );
+    }
+    throw error;
+  }
+  const config = deploymentConfig(text, environment);
   // Keep the copy beside the original so relative entrypoints and secret files still resolve.
   const temporary = config ? join(dirname(source), `.wrangler-deploy-${randomUUID()}.jsonc`) : null;
   const require = createRequire(import.meta.url);

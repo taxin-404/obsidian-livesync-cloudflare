@@ -30,8 +30,12 @@ Use Wrangler to deploy from a local checkout:
 
    ```sh
    npx wrangler login
-   npm run deploy:storage -- --secrets-file .dev.vars
+   npm run deploy -- --secrets-file .dev.vars
    ```
+
+   In this repository `npm run deploy` publishes the storage Worker from
+   `wrangler.jsonc`, so copying `wrangler.deploy.jsonc` is optional and only
+   needed if you keep a per-account configuration (`npm run deploy:storage`).
 
 Wrangler opens Cloudflare authentication in a browser. On success, it provisions
 the SQLite Durable Object and private backup R2 bucket, applies its migration, uploads `COUCHDB_PASSWORD` as
@@ -53,14 +57,8 @@ On Cloudflare's setup page:
    if using backups. For setup without R2 checkout, use the local deployment
    steps above with `BACKUP_ENABLED` set to `"false"`.
 2. Keep the build root at the repository root and the build command blank.
-   **Replace the prefilled deploy command** with:
-
-   ```sh
-   npm run deploy:storage:template
-   ```
-
-   Cloudflare detects our `npm run deploy` script, which needs ignored local
-   configurations and deploys both Workers. It is unsuitable for this button.
+   The prefill `npm run deploy` is correct: in this repository it publishes the
+   storage Worker only, from `wrangler.jsonc`.
 3. Review the prompted settings:
 
    | Setting | What to enter |
