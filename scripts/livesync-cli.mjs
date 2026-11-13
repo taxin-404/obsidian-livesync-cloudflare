@@ -3,9 +3,13 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readVault } from './livesync-config.mjs';
 
+// Obsidian ships as an Electron app, so on Linux the process is usually called
+// `electron` and only its command line names Obsidian. Match the executable and
+// the app bundle, never a generic `app.asar` that would catch other editors.
 const OBSIDIAN_PROCESSES = [
   ['-x', 'obsidian'],
   ['-x', 'Obsidian'],
+  ['-f', '/obsidian/app.asar'],
 ];
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -29,6 +33,10 @@ function databasePath(remote) {
  * Real adapters for the two commands: the HTTP surface comes from the vault's
  * own remote configuration, so nothing is hard-coded.
  */
+export function isObsidianRunning() {
+  return OBSIDIAN_PROCESSES.some((args) => spawnSync('pgrep', args, { stdio: 'ignore' }).status === 0);
+}
+
 export function createAdapters(vaultDir) {
   let cached;
   const vault = () => (cached ??= readVault(vaultDir));
@@ -36,7 +44,7 @@ export function createAdapters(vaultDir) {
 
   return {
     obsidianRunning() {
-      return OBSIDIAN_PROCESSES.some((args) => spawnSync('pgrep', args, { stdio: 'ignore' }).status === 0);
+      return isObsidianRunning();
     },
     async fetchPage(password) {
       const response = await fetch(`${await origin()}/`, {

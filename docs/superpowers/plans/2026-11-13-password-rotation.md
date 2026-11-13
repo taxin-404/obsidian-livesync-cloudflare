@@ -530,7 +530,11 @@ git commit -m "Expose rotation and drift checks as npm scripts"
 - [ ] **Step 1: Confirm the deployment is currently consistent**
 
 Run: `npm run check:secrets -- --vault /home/taxin/Documents/notes`
-Expected: `server password`, `setup page gate`, `setup URI password` and `vault connection` green; `setup URI device profile` **red**, naming the ID derivation key. That red line is the real defect this work found; do not "fix" it by editing config.
+Expected: `server password`, `setup page gate` and `setup URI password` green;
+`setup URI device profile` **red**, naming the ID derivation key, and
+`vault connection` **red**, because the live legacy `encryptedCouchDBConnection`
+still carries the pre-rotation password. Both red lines are real defects this
+work found; do not "fix" them by editing config.
 
 - [ ] **Step 2: Dry run**
 
