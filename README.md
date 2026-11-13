@@ -237,6 +237,16 @@ npx wrangler r2 bucket delete obsidian-sync-backups
 
 Changing `BACKUP_ENABLED` to `"false"` and redeploying with the deploy script removes the R2 binding and cron; sync keeps working (keep your own backups).
 
+### Where the database runs
+
+The Worker itself runs in the Cloudflare data center closest to each request.
+The SQLite Durable Object that holds the database is created once and does not
+move, so every request is forwarded to that one location. New objects are hinted
+to `apac` in `src/placement.ts`; hints are best effort and are ignored for an
+object that already exists. Cloudflare does not place Durable Objects in every
+country (including Bangladesh), so Asia-Pacific is the nearest available region.
+From Dhaka the extra hop to the database is roughly 50–60 ms.
+
 ## Updating from upstream
 
 This repository is a snapshot of

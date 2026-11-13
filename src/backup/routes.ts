@@ -1,6 +1,7 @@
 import { json, couchError, pouchError } from '../http';
 import { DATABASE_NAME, fail, boundedBytes } from './format';
 import { listBackups, readManifest, directory, verifyBackup } from './storage';
+import { DO_LOCATION_HINT } from '../placement';
 
 export async function backupRoute(request: Request, env: Env): Promise<Response> {
   try {
@@ -8,7 +9,7 @@ export async function backupRoute(request: Request, env: Env): Promise<Response>
     const parts = url.pathname.split('/').filter(Boolean).slice(1);
     const database = url.searchParams.get('database') ?? env.BACKUP_DATABASE;
     if (!DATABASE_NAME.test(database)) fail('Invalid database name');
-    const stub = env.POUCH_DATABASES.getByName(database);
+    const stub = env.POUCH_DATABASES.getByName(database, { locationHint: DO_LOCATION_HINT });
     if (parts.length === 0 && request.method === 'GET') return json(await listBackups(env.BACKUP_BUCKET, database));
     if (parts.length === 0 && request.method === 'POST') return json(await stub.createBackup(database));
     if (parts[0] === 'status' && parts.length === 1 && request.method === 'GET') return json(await stub.backupStatus());
@@ -21,7 +22,7 @@ export async function backupRoute(request: Request, env: Env): Promise<Response>
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) fail('Restore request must be an object');
       const { target, id, restart } = parsed as Record<string, unknown>;
       if (typeof target !== 'string' || !DATABASE_NAME.test(target) || typeof id !== 'string' || (restart !== undefined && typeof restart !== 'boolean')) fail('Invalid restore request');
-      return json(await env.POUCH_DATABASES.getByName(target).restoreBackup(target, database, id, restart === true));
+      return json(await env.POUCH_DATABASES.getByName(target, { locationHint: DO_LOCATION_HINT }).restoreBackup(target, database, id, restart === true));
     }
     if (parts.length === 2 && request.method === 'GET') {
       const manifest = await readManifest(env.BACKUP_BUCKET, database, parts[0]);

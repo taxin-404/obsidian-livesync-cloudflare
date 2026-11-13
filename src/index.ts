@@ -4,6 +4,7 @@ import { authenticate } from './auth';
 import { couchError, json, readJson } from './http';
 import { isLandingRequest, landingPage } from './landing';
 import { PouchDatabase } from './pouch-database';
+import { DO_LOCATION_HINT } from './placement';
 import type { AppEnv } from './types';
 
 export { PouchDatabase };
@@ -14,7 +15,7 @@ export default {
   async scheduled(_controller: ScheduledController, env: Env): Promise<void> {
     if (env.BACKUP_ENABLED !== 'true') return;
     if (!DATABASE_NAME.test(env.BACKUP_DATABASE)) throw new Error('Invalid BACKUP_DATABASE');
-    await env.POUCH_DATABASES.getByName(env.BACKUP_DATABASE).createBackup(env.BACKUP_DATABASE, true);
+    await env.POUCH_DATABASES.getByName(env.BACKUP_DATABASE, { locationHint: DO_LOCATION_HINT }).createBackup(env.BACKUP_DATABASE, true);
   },
   async fetch(request: Request, baseEnv: Env): Promise<Response> {
     const env = baseEnv as AppEnv;
@@ -75,7 +76,7 @@ async function routeAuthenticated(request: Request, url: URL, env: AppEnv): Prom
     return couchError(400, 'illegal_database_name', 'Name must begin with a lowercase letter.');
   }
 
-  const stub = env.POUCH_DATABASES.getByName(databaseName);
+  const stub = env.POUCH_DATABASES.getByName(databaseName, { locationHint: DO_LOCATION_HINT });
   const forwardedUrl = new URL(request.url);
   forwardedUrl.pathname = '/' + parts.slice(1).join('/');
   const headers = new Headers(request.headers);
