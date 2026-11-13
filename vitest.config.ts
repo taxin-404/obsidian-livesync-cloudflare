@@ -13,7 +13,6 @@ export default defineConfig({
       miniflare: {
         bindings: {
           COUCHDB_PASSWORD: 'test-password',
-          PAGE_PASSWORD: 'test-page-password',
           SETUP_URI: 'obsidian://setuplivesync?settings=test',
           SETUP_URI_PASSPHRASE: 'test-uri-passphrase',
         },

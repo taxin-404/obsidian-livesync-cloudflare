@@ -125,15 +125,16 @@ On the configured device: LiveSync settings → **Remote Configuration → Copy 
 
 ### Connection details page
 
-A browser opening the Worker URL is asked for `PAGE_PASSWORD` before the page
-shows the setup URI and its passphrase (or, when those secrets are not bound,
-the URL, database, username and password). There is no session or cookie, so
-every visit asks again. If `PAGE_PASSWORD` is unset the page returns 503
-instead of exposing anything. Requests from the plugin, PouchDB or curl do not
-ask for HTML and still get the authenticated CouchDB surface.
+A browser opening the Worker URL is asked for `PAGE_PASSWORD`, or for
+`COUCHDB_PASSWORD` when `PAGE_PASSWORD` is not set, before the page shows the
+setup URI and its passphrase (or, when those secrets are not bound, the URL,
+database, username and password). There is no session or cookie, so every visit
+asks again. If neither password exists the page returns 503 instead of exposing
+anything. Requests from the plugin, PouchDB or curl do not ask for HTML and
+still get the authenticated CouchDB surface.
 
 ```sh
-npx wrangler secret put PAGE_PASSWORD --name <worker>
+npx wrangler secret put COUCHDB_PASSWORD --name <worker>   # also gates the page
 npx wrangler secret put SETUP_URI --name <worker>
 npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>
 ```

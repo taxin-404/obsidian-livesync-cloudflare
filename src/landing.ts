@@ -149,13 +149,14 @@ function setup(origin: string, env: AppEnv): Response {
  * Connection material for the people this deployment is shared with. Not part of
  * the CouchDB surface: browsers ask for text/html, LiveSync clients never do.
  *
- * The setup details are never served without PAGE_PASSWORD; there is no session
- * or cookie, so every visit has to enter it again. If PAGE_PASSWORD is not
- * configured the page fails closed instead of exposing the setup material.
+ * The setup details are never served without a password; there is no session or
+ * cookie, so every visit has to enter it again. PAGE_PASSWORD overrides the
+ * gate, and COUCHDB_PASSWORD is the fallback so a deployment needs only the one
+ * secret. If neither exists the page fails closed.
  */
 export async function landingPage(request: Request, env: AppEnv): Promise<Response> {
   const origin = new URL(request.url).origin;
-  const expected = env.PAGE_PASSWORD;
+  const expected = env.PAGE_PASSWORD || env.COUCHDB_PASSWORD;
   if (!expected) {
     return new Response('Not configured.', { status: 503, headers: { 'cache-control': 'no-store' } });
   }

@@ -91,7 +91,7 @@ describe('CouchDB compatibility surface', () => {
     const ok = await SELF.fetch(new Request('https://pouch.test/', {
       method: 'POST',
       headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'password=test-page-password',
+      body: 'password=test-password',
     }));
     expect(ok.status).toBe(200);
     const html = await ok.text();
