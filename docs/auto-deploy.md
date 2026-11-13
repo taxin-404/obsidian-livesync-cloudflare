@@ -265,8 +265,17 @@ drift. It never prints a secret.
 
 Wrangler needs to know which account owns the Worker when the login can see more
 than one: add `--account-id <id>` to `rotate:password`, or export
-`CLOUDFLARE_ACCOUNT_ID` first. Without it the first secret push fails before
-anything is written.
+`CLOUDFLARE_ACCOUNT_ID` first. Without it the preflight fails before anything is
+written. If the Worker is not named `live`, pass `--worker <name>`.
+
+Both commands assume the page gate uses `COUCHDB_PASSWORD`: leave
+`PAGE_PASSWORD` unset or set it to the same value, otherwise the page cannot be
+read and rotation refuses before touching the server.
+
+Local writes are staged first and renamed into place after verification. If a
+run is ever interrupted, check `<password-file>.tmp` and
+`data.json.tmp` next to the real files before retrying: one of them may already
+hold the new password or the encrypted settings.
 
 ## Troubleshooting
 

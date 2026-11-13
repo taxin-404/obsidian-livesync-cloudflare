@@ -62,9 +62,22 @@ export async function readDataFile(vault) {
   return readFile(vault.dataPath, 'utf8');
 }
 
+async function readOptional(path) {
+  try {
+    return await readFile(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
 /** Returns a plain description of every file the tooling may touch. */
 export async function snapshot(vault) {
-  return { data: await readDataFile(vault), password: await readFile(vault.passwordFile, 'utf8') };
+  return {
+    data: await readDataFile(vault),
+    password: await readFile(vault.passwordFile, 'utf8'),
+    dataTemp: await readOptional(`${vault.dataPath}.tmp`),
+    passwordTemp: await readOptional(`${vault.passwordFile}.tmp`),
+  };
 }
 
 /** Deterministic random source so generated ids and salts are reproducible. */

@@ -33,7 +33,8 @@ test('fails a different passphrase', async () => {
 });
 
 test('pins the envelope layout with a fixed random source', async () => {
-  const random = (bytes) => new Uint8Array(bytes).fill(7);
+  let field = 0;
+  const random = (bytes) => new Uint8Array(bytes).fill(++field);
   const blob = await encryptValue('fixed', 'fixed-pass', { random });
   assert.equal(blob.slice(0, 2), ENCRYPTED_PREFIX);
   assert.equal(Buffer.from(blob.slice(2), 'base64').length, 32 + 12 + 32 + Buffer.byteLength('fixed') + 16);
@@ -99,6 +100,14 @@ test('refuses a vault whose encrypted value has an unknown prefix', async () => 
   await assert.rejects(() => readVault(vault.vaultDir), /unsupported encrypted value prefix/);
 });
 
+test('refuses a vault without an integer id derivation version', async () => {
+  const vault = await makeVault();
+  const data = JSON.parse(await readDataFile(vault));
+  delete data.idDerivationVersion;
+  await writeFile(vault.dataPath, `${JSON.stringify(data, null, 2)}\n`);
+  await assert.rejects(() => readVault(vault.vaultDir), /idDerivationVersion/);
+});
+
 test('refuses a vault with no active remote configuration', async () => {
   const vault = await makeVault();
   const data = JSON.parse(await readDataFile(vault));
@@ -159,8 +168,15 @@ test('buildProfile keeps the device profile and swaps only the authoritative fac
   assert.equal(Object.keys(profile.remoteConfigurations).length, 1, 'the caller profile is not mutated');
 });
 
-test('buildProfile does not add desktop-only keys', async () => {
-  const built = await buildProfile({ profile: { remoteConfigurations: {} }, remote: { user: 'admin', password: 'n', host: 'h', pathname: '/', search: '' }, password: 'n', e2eePassphrase: 'e', idDerivationKey: 'k', idDerivationVersion: 1, setupPassphrase: 'p' });
+test('buildProfile removes desktop-only keys instead of carrying them over', async () => {
+  const desktop = {
+    additionalSuffixOfDatabaseName: 'desktop',
+    syncInternalFiles: true,
+    syncInternalFilesTargetPatterns: ['a'],
+    deviceAndVaultName: 'desktop',
+    remoteConfigurations: {},
+  };
+  const built = await buildProfile({ profile: desktop, remote: { user: 'admin', password: 'n', host: 'h', pathname: '/', search: '' }, password: 'n', e2eePassphrase: 'e', idDerivationKey: 'k', idDerivationVersion: 1, setupPassphrase: 'p' });
   for (const key of ['additionalSuffixOfDatabaseName', 'syncInternalFiles', 'syncInternalFilesTargetPatterns', 'deviceAndVaultName', 'pluginSyncExtendedSetting']) {
     assert.equal(key in built.settings, false, key);
   }

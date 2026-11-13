@@ -25,9 +25,8 @@ function databaseOf(remote) {
   return new URLSearchParams(remote.search ?? '').get('db') ?? '';
 }
 
-function remoteEntry(profile) {
-  const entries = Object.values(profile?.remoteConfigurations ?? {});
-  return entries.length === 1 ? entries[0] : null;
+function remoteEntries(profile) {
+  return Object.values(profile?.remoteConfigurations ?? {});
 }
 
 /**
@@ -100,24 +99,40 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
     ),
   );
 
-  const storedRemote = remoteEntry(profile);
-  let storedRemotePassword = null;
-  let remoteError = null;
-  if (storedRemote && storedRemote.isEncrypted === false) {
-    try {
-      storedRemotePassword = parseRemote(storedRemote.uri).password;
-    } catch {
-      remoteError = 'the setup URI carries a remote entry that cannot be read';
+  const entries = remoteEntries(profile);
+  let entry = null;
+  let entryProblem = null;
+  let singlePlaintextEntry = false;
+  if (profile !== null) {
+    if (entries.length !== 1) {
+      entryProblem = `the setup URI carries ${entries.length} remote configurations, expected exactly one`;
+    } else if (entries[0].isEncrypted !== false) {
+      entryProblem = 'the setup URI carries an encrypted remote configuration instead of a plaintext one';
+    } else {
+      singlePlaintextEntry = true;
+      try {
+        entry = parseRemote(entries[0].uri);
+      } catch {
+        entryProblem = 'the setup URI carries a remote entry that cannot be read';
+      }
     }
   }
+
+  const entryPassword = entry === null ? null : entry.password;
+  // Only a single plaintext entry can contradict the top-level password; a
+  // malformed profile is reported by the device-profile link instead.
+  const entryPasswordError = singlePlaintextEntry ? entryProblem : null;
   const passwordMatches =
-    profile !== null && profile.couchDB_PASSWORD === password && remoteError === null && (storedRemotePassword === null || storedRemotePassword === password);
+    profile !== null &&
+    profile.couchDB_PASSWORD === password &&
+    entryPasswordError === null &&
+    (entryPassword === null || entryPassword === password);
   links.push(
     link(
       'setup URI password',
       passwordMatches,
-      remoteError
-        ? remoteError
+      entryPasswordError
+        ? entryPasswordError
         : profile === null
           ? 'the setup URI could not be read, so its password cannot be checked'
           : passwordMatches
@@ -138,12 +153,16 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
     profileDetail = 'the setup URI carries a different end-to-end passphrase';
   } else if (profile.idDerivationVersion !== state.idDerivationVersion) {
     profileDetail = 'the setup URI uses a different ID derivation version';
-  } else if (hostOf(profile.couchDB_URI) !== state.remote.host) {
-    profileDetail = `the setup URI points at ${hostOf(profile.couchDB_URI) || 'an unreadable address'}, expected ${state.remote.host}`;
-  } else if (profile.couchDB_USER !== state.remote.user) {
-    profileDetail = `the setup URI uses the user ${profile.couchDB_USER}, expected ${state.remote.user}`;
-  } else if (profile.couchDB_DBNAME !== databaseOf(state.remote)) {
-    profileDetail = `the setup URI uses the database ${profile.couchDB_DBNAME}, expected ${databaseOf(state.remote)}`;
+  } else if (entryProblem !== null) {
+    profileDetail = entryProblem;
+  } else if (entry.host !== state.remote.host) {
+    profileDetail = `the setup URI's remote entry points at ${entry.host}, expected ${state.remote.host}`;
+  } else if (hostOf(profile.couchDB_URI) !== entry.host) {
+    profileDetail = `the setup URI's address ${hostOf(profile.couchDB_URI) || 'is unreadable'} does not match its remote entry ${entry.host}`;
+  } else if (entry.user !== state.remote.user) {
+    profileDetail = `the setup URI uses the user ${entry.user}, expected ${state.remote.user}`;
+  } else if ((new URLSearchParams(entry.search).get('db') ?? '') !== databaseOf(state.remote)) {
+    profileDetail = `the setup URI uses the database ${new URLSearchParams(entry.search).get('db') ?? '(none)'}, expected ${databaseOf(state.remote)}`;
   } else {
     profileOk = true;
   }
@@ -165,6 +184,10 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
 
   const ok = links.every((entry) => entry.ok);
   return { ok, links, exitCode: ok ? 0 : 1 };
+}
+
+function shellQuote(value) {
+  return /^[A-Za-z0-9_./~-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 export function parseArgs(argv) {
@@ -200,7 +223,11 @@ async function main() {
     console.log(JSON.stringify(report, null, 2));
   } else {
     printReport(report);
-    if (!report.ok) console.log(`\nFix: npm run rotate:password -- --vault ${args.vault}`);
+    if (!report.ok) {
+      const flags = [`--vault ${shellQuote(args.vault)}`];
+      if (args.passwordFile) flags.push(`--password-file ${shellQuote(args.passwordFile)}`);
+      console.log(`\nFix: npm run rotate:password -- ${flags.join(' ')}`);
+    }
   }
   process.exitCode = report.exitCode;
 }

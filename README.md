@@ -146,7 +146,10 @@ npm run check:secrets -- --vault ~/Documents/notes
 verifies the result; every paired device then re-pairs from the page.
 `check:secrets` prints one line per link and names the one that drifted, without
 printing a secret. If Wrangler can see more than one Cloudflare account, add
-`--account-id <id>` to both commands or export `CLOUDFLARE_ACCOUNT_ID`.
+`--account-id <id>` to `rotate:password` or export `CLOUDFLARE_ACCOUNT_ID`; if
+the Worker is not named `live`, add `--worker <name>`. Both commands require the
+gate to use `COUCHDB_PASSWORD`, so leave `PAGE_PASSWORD` unset or set it to the
+same value.
 
 ## Backups and restore
 

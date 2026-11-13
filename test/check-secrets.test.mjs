@@ -28,7 +28,7 @@ test('reports every link green when the deployment is consistent', async () => {
   const vault = await fixture();
   const report = await checkSecrets({
     ...vault,
-    fetchAuth: async () => 200,
+    fetchAuth: async (password) => (password === vault.password ? 200 : 401),
     fetchPage: async () => page(await goodProfile(vault)),
   });
   assert.equal(report.ok, true);
@@ -136,6 +136,39 @@ test('never prints a secret', async () => {
   assert.equal(text.includes(vault.e2eePassphrase), false);
   assert.equal(text.includes(vault.idDerivationKey), false);
   assert.equal(text.includes('obsidian://setuplivesync'), false);
+  assert.equal(text.includes('uri-pass'), false);
+});
+
+test('names a setup URI with more than one remote configuration', async () => {
+  const vault = await fixture();
+  const profile = await goodProfile(vault);
+  profile.remoteConfigurations['remote-extra'] = {
+    id: 'remote-extra',
+    name: 'elsewhere',
+    uri: 'sls+https://admin:wrong@elsewhere.test/?db=vault',
+    isEncrypted: false,
+  };
+  const report = await checkSecrets({ ...vault, fetchAuth: async () => 200, fetchPage: async () => page(profile) });
+  assert.deepEqual(failed(report), ['setup URI device profile']);
+  assert.match(report.links.find((link) => !link.ok).detail, /2 remote configurations/);
+});
+
+test('names an encrypted remote configuration', async () => {
+  const vault = await fixture();
+  const profile = await goodProfile(vault);
+  profile.remoteConfigurations['remote-page'].isEncrypted = true;
+  const report = await checkSecrets({ ...vault, fetchAuth: async () => 200, fetchPage: async () => page(profile) });
+  assert.deepEqual(failed(report), ['setup URI device profile']);
+  assert.match(report.links.find((link) => !link.ok).detail, /encrypted remote configuration/);
+});
+
+test('names a remote entry that points at another server', async () => {
+  const vault = await fixture();
+  const profile = await goodProfile(vault);
+  profile.remoteConfigurations['remote-page'].uri = `sls+https://admin:${vault.password}@elsewhere.test/?db=vault`;
+  const report = await checkSecrets({ ...vault, fetchAuth: async () => 200, fetchPage: async () => page(profile) });
+  assert.deepEqual(failed(report), ['setup URI device profile']);
+  assert.match(report.links.find((link) => !link.ok).detail, /elsewhere\.test/);
 });
 
 test('parses the drift-check arguments', () => {

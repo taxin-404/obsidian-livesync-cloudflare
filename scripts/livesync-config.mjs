@@ -110,6 +110,13 @@ export function dataFilePath(vaultDir) {
   return join(vaultDir, ...PLUGIN_DIRECTORY, 'data.json');
 }
 
+function readIdDerivationVersion(data) {
+  if (!Number.isInteger(data.idDerivationVersion)) {
+    throw new Error('the vault has no integer idDerivationVersion');
+  }
+  return data.idDerivationVersion;
+}
+
 export async function readVault(vaultDir) {
   const dataPath = dataFilePath(vaultDir);
   const data = JSON.parse(await readFile(dataPath, 'utf8'));
@@ -125,7 +132,7 @@ export async function readVault(vaultDir) {
     data,
     e2eePassphrase: await decryptValue(data.encryptedPassphrase, passphrase),
     idDerivationKey: await decryptValue(data.encryptedIdDerivationKey, passphrase),
-    idDerivationVersion: Number.isInteger(data.idDerivationVersion) ? data.idDerivationVersion : 0,
+    idDerivationVersion: readIdDerivationVersion(data),
     legacyConnection: JSON.parse(await decryptValue(data.encryptedCouchDBConnection, passphrase)),
     activeRemoteId,
     remoteUri,
@@ -133,10 +140,14 @@ export async function readVault(vaultDir) {
   };
 }
 
+export function serializeVault(data) {
+  return `${JSON.stringify(data, null, 2)}\n`;
+}
+
 export async function writeVault(vaultDir, data) {
   const dataPath = dataFilePath(vaultDir);
   const temporary = `${dataPath}.tmp`;
-  await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+  await writeFile(temporary, serializeVault(data), { mode: 0o600 });
   await rename(temporary, dataPath);
 }
 
@@ -177,7 +188,16 @@ export async function decodeSetupUri(uri, setupPassphrase) {
  */
 export async function buildProfile(options) {
   const settings = structuredClone(options.profile ?? {});
-  for (const key of ['P2P_managedType', 'P2P_managedId', 'P2P_managedToken', 'pluginSyncExtendedSetting']) {
+  for (const key of [
+    'P2P_managedType',
+    'P2P_managedId',
+    'P2P_managedToken',
+    'pluginSyncExtendedSetting',
+    'additionalSuffixOfDatabaseName',
+    'syncInternalFiles',
+    'syncInternalFilesTargetPatterns',
+    'deviceAndVaultName',
+  ]) {
     delete settings[key];
   }
   settings.couchDB_URI = `https://${options.remote.host}`;
