@@ -248,6 +248,9 @@ export function parseArgs(argv) {
     } else if (flag === '--password-file') {
       args.passwordFile = flagValue(argv, index, flag);
       index++;
+    } else if (flag === '--account-id') {
+      args.accountId = flagValue(argv, index, flag);
+      index++;
     } else if (flag === '--dry-run') {
       args.dryRun = true;
     } else if (flag === '--force') {
@@ -268,7 +271,7 @@ async function main() {
   const result = await rotate({
     vaultDir: args.vault,
     passwordFile: args.passwordFile ?? DEFAULT_PASSWORD_FILE,
-    putSecret: createSecretPutter(args.worker),
+    putSecret: createSecretPutter(args.worker, args.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID),
     fetchPage: adapters.fetchPage,
     fetchAuth: adapters.fetchAuth,
     obsidianRunning: adapters.obsidianRunning,

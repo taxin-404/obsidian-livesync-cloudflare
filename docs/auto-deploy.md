@@ -263,6 +263,11 @@ gated page; there is no grace period for the old password.
 setup URI password, setup URI device profile, vault connection — and exits 1 on
 drift. It never prints a secret.
 
+Wrangler needs to know which account owns the Worker when the login can see more
+than one: add `--account-id <id>` to `rotate:password`, or export
+`CLOUDFLARE_ACCOUNT_ID` first. Without it the first secret push fails before
+anything is written.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

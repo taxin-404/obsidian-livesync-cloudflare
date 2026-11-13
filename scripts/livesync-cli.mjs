@@ -57,16 +57,22 @@ export function createAdapters(vaultDir) {
   };
 }
 
-export function createSecretPutter(worker) {
+export function createSecretPutter(worker, accountId) {
+  const env = accountId ? { ...process.env, CLOUDFLARE_ACCOUNT_ID: accountId } : process.env;
   return async (name, value) => {
     const result = spawnSync('npx', ['wrangler', 'secret', 'put', name, '--name', worker], {
       input: `${value}\n`,
       stdio: ['pipe', 'inherit', 'inherit'],
       encoding: 'utf8',
-      env: process.env,
+      env,
     });
     if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(`wrangler secret put ${name} exited with status ${result.status}`);
+    if (result.status !== 0) {
+      const hint = accountId
+        ? ''
+        : ' — with more than one Cloudflare account, set CLOUDFLARE_ACCOUNT_ID or pass --account-id';
+      throw new Error(`wrangler secret put ${name} exited with status ${result.status}${hint}`);
+    }
   };
 }
 

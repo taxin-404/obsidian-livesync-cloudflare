@@ -163,6 +163,10 @@ test('accepts a password file override', () => {
   });
 });
 
+test('accepts an account id', () => {
+  assert.equal(parseArgs(['--vault', '/v', '--account-id', 'abc']).accountId, 'abc');
+});
+
 test('rejects an unknown flag and a missing value', () => {
   assert.throws(() => parseArgs(['--nope']), /unknown argument: --nope/);
   assert.throws(() => parseArgs(['--vault']), /--vault needs a value/);

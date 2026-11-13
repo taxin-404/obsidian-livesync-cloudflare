@@ -145,7 +145,8 @@ npm run check:secrets -- --vault ~/Documents/notes
 `rotate:password` regenerates every dependent secret, updates the vault and
 verifies the result; every paired device then re-pairs from the page.
 `check:secrets` prints one line per link and names the one that drifted, without
-printing a secret.
+printing a secret. If Wrangler can see more than one Cloudflare account, add
+`--account-id <id>` to both commands or export `CLOUDFLARE_ACCOUNT_ID`.
 
 ## Backups and restore
 
