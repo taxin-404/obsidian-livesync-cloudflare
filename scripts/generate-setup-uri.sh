@@ -11,7 +11,8 @@ VAULT_PASS="${LIVESYNC_PASSPHRASE:-}"
 URI_MODE="${uri_mode:-persistent}"
 
 if [[ -z "$HOST" ]]; then
-  echo "usage: LIVESYNC_HOST=https://<worker>.<subdomain>.workers.dev $0" >&2
+  echo "usage: LIVESYNC_HOST=https://<worker>.<subdomain>.workers.dev npm run setup:uri" >&2
+  echo "   or: LIVESYNC_HOST=https://<worker>.<subdomain>.workers.dev $0" >&2
   exit 1
 fi
 
@@ -62,5 +63,12 @@ umask 077
 printf 'Setup URI saved to %s\n\n' "$PWD/.setup-uri"
 printf 'Setup URI passphrase:  %s\n' "$uri_pass"
 printf 'Vault E2EE passphrase: %s\n\n' "$VAULT_PASS"
+if (( ${#uri} > 4800 )); then
+  printf 'Warning: the setup URI is %d characters. Cloudflare rejects a Worker\nsecret over 5.1 kB; use npm run rotate:password to build a compact one.\n\n' "${#uri}" >&2
+fi
 printf 'Paste the URI into LiveSync -> Connect with Setup URI.\n'
-printf 'Copy it with: sed -n "s/^uri=//p" .setup-uri | wl-copy   # or xclip\n'
+printf 'Copy it with: sed -n "s/^uri=//p" .setup-uri | wl-copy   # or xclip\n\n'
+printf 'Optional: show the URI on the connection page instead of raw fields.\n'
+printf 'Substitute your Worker name for <worker> (the default is obsidian-sync):\n'
+printf '  sed -n "s/^uri=//p" .setup-uri | npx wrangler secret put SETUP_URI --name <worker>\n'
+printf '  sed -n "s/^uri_passphrase=//p" .setup-uri | npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>\n'

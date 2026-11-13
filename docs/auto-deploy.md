@@ -257,7 +257,9 @@ passphrase, writes the new password to
 `~/.config/obsidian-livesync/server-password`, rewrites the vault's encrypted
 connection, and verifies the change with the old and the new password. Quit
 Obsidian first. Every paired device must re-pair from the setup URI shown on the
-gated page; there is no grace period for the old password.
+gated page; there is no grace period for the old password. The full list of
+chosen, generated and shipped values, with the command for each:
+[docs/credentials.md](credentials.md).
 
 `check:secrets` prints one line per link — server password, setup page gate,
 setup URI password, setup URI device profile, vault connection — and exits 1 on

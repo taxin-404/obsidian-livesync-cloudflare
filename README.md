@@ -17,7 +17,8 @@ Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince
 | Workers Builds auto-deploy | Cloudflare builds and deploys on every push to `main`, with no API token. |
 | GitHub Actions CI | Type-check and storage tests on every push and pull request; never deploys. |
 | Durable Object alarm for backups | Works even when the account's five free cron slots are full. The alarm calls the same `createBackup(..., true)` path as the cron handler (skips before 03:00 UTC and after the day's first success, so failures retry hourly). |
-| `scripts/generate-setup-uri.sh` | Produces the `obsidian://setuplivesync?...` URI needed by the plugin's onboarding wizard. |
+| `scripts/generate-setup-uri.sh` + `npm run setup:uri` | Produces the `obsidian://setuplivesync?...` URI needed by the plugin's onboarding wizard. |
+| `docs/credentials.md` | Which values you choose, which are generated from a vault, and how to make each one. |
 | `scripts/upstream-sync.mjs` + `upstream.json` | Shows what changed upstream since the pinned snapshot and ports single files. See [docs/upstream-sync.md](docs/upstream-sync.md). |
 | `wrangler.jsonc` with `crons: []` | The alarm replaces the cron trigger; add a cron only if you prefer it. |
 
@@ -60,7 +61,17 @@ troubleshooting: **[docs/auto-deploy.md](docs/auto-deploy.md)**.
 
 #### Configuration at a glance
 
-Exactly one value is entered outside the repository:
+Three kinds of value:
+
+- **you choose** `COUCHDB_PASSWORD` — the only required entry outside the repository;
+- **a script or the plugin generates** `SETUP_URI` and `SETUP_URI_PASSPHRASE` — optional,
+  vault-specific, published as a pair to make the connection page a scannable QR code;
+- **the repository ships** everything else, re-applied on every deploy.
+
+A deploy never generates or deletes a credential. Full matrix, including how to
+make each secret and how to recover: **[docs/credentials.md](docs/credentials.md)**.
+
+One value is required:
 
 | Name | Type | Where | Value |
 | --- | --- | --- | --- |
@@ -107,11 +118,15 @@ The deployment creates the Worker, its SQLite Durable Object, the private R2 buc
 ## Connect Obsidian (first device)
 
 1. Install and enable **Self-hosted LiveSync** in the vault. Back the vault up first, and disable Obsidian Sync/iCloud for it.
-2. Generate a Setup URI on your computer:
+2. Generate a Setup URI on your computer — **fresh deployments only**:
    ```sh
-   LIVESYNC_HOST='https://<worker>.<subdomain>.workers.dev' ./scripts/generate-setup-uri.sh
+   LIVESYNC_HOST='https://<worker>.<subdomain>.workers.dev' \
+   LIVESYNC_PASS='<the same password you added as the secret>' \
+   npm run setup:uri
    ```
-   It needs [Deno](https://deno.com). The script prints (and saves to `.setup-uri`, mode 600) the Setup URI, its passphrase, and the vault E2EE passphrase. **Store the E2EE passphrase in a password manager** — without it the server data and backups are unreadable.
+   It needs [Deno](https://deno.com). The password is embedded in the URI, so it must match `COUCHDB_PASSWORD`; without `LIVESYNC_PASS` the script reads it from `.dev.vars`. The script prints (and saves to `.setup-uri`, mode 600) the Setup URI, its passphrase, and the vault E2EE passphrase. **Store the E2EE passphrase in a password manager** — without it the server data and backups are unreadable.
+
+   If the vault already has notes, do **not** run this: it invents a new vault passphrase, which cannot read the existing data. Use **Copy Setup URI** on a paired device, or `npm run rotate:password`, instead. What is chosen, generated and shipped: [docs/credentials.md](docs/credentials.md).
 3. In Obsidian: LiveSync settings → **Rerun Onboarding Wizard** → *I am setting this up for the first time* → *Use a Setup URI*.
 4. Paste the URI (copy it with `sed -n 's/^uri=//p' .setup-uri | wl-copy`), enter the Setup URI passphrase, **Test Settings and Continue**.
 5. **Restart and Initialise Server**, confirm the overwrite warning, choose **Use this device's settings** if asked.
@@ -145,7 +160,9 @@ npm run check:secrets -- --vault ~/Documents/notes
 `rotate:password` regenerates every dependent secret, updates the vault and
 verifies the result; every paired device then re-pairs from the page.
 `check:secrets` prints one line per link and names the one that drifted, without
-printing a secret. If Wrangler can see more than one Cloudflare account, add
+printing a secret. The complete credential matrix is in
+[docs/credentials.md](docs/credentials.md). If Wrangler can see more than one
+Cloudflare account, add
 `--account-id <id>` to `rotate:password` or export `CLOUDFLARE_ACCOUNT_ID`; if
 the Worker is not named `live`, add `--worker <name>`. Both commands require the
 gate to use `COUCHDB_PASSWORD`, so leave `PAGE_PASSWORD` unset or set it to the
