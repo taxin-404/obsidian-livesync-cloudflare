@@ -123,6 +123,15 @@ The Setup URI passphrase protects only the URI; the vault passphrase protects th
 
 On the configured device: LiveSync settings → **Remote Configuration → Copy Setup URI** (pick a new URI passphrase). Use that on the next device: *Add another device* → *Use a Setup URI*. Do not reuse the provisioning URI for every device.
 
+### Connection details page
+
+Opening the Worker URL in a browser shows the URL, database name, username and
+password to paste into LiveSync. The page answers `GET /` for requests that ask
+for HTML, before authentication; requests from the plugin, PouchDB or curl
+(`Accept: application/json` or none) still get the authenticated CouchDB
+surface. Anyone with the page link can read those credentials, so share the
+link only with people who should have the password.
+
 ## Backups and restore
 
 - Daily after **03:00 UTC** via a Durable Object alarm; 30 daily, 8 weekly, 24 monthly recovery points in R2.
