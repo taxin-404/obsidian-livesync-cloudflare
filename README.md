@@ -38,18 +38,23 @@ One Durable Object per database (one vault). The plugin's E2EE passphrase encryp
 
 ### Option A — GitHub Actions (included)
 
-1. Create a Cloudflare **API token**: dashboard → *My Profile → API Tokens → Create Token*.
-   Use the **Edit Cloudflare Workers** template and add:
-   - `Workers R2 Storage: Edit` (backup bucket provisioning)
-   - `Account Settings: Read` (optional, for account discovery)
-   Scope it to your account only.
-2. Add repository secrets (Settings → Secrets and variables → Actions):
+Push to `main` and the Worker redeploys itself.
+
+1. Create a Cloudflare **API token**: dashboard → *My Profile → API Tokens → Create Token*,
+   with `Workers Scripts: Edit` and `Workers R2 Storage: Edit`, scoped to your account.
+2. Add three repository secrets:
    ```sh
-   gh secret set CLOUDFLARE_API_TOKEN --body "<token>"
-   gh secret set CLOUDFLARE_ACCOUNT_ID --body "<account id>"
-   gh secret set COUCHDB_PASSWORD   --body "<a strong password>"
+   gh secret set CLOUDFLARE_API_TOKEN  --repo <owner>/<repo>
+   gh secret set CLOUDFLARE_ACCOUNT_ID --repo <owner>/<repo>
+   gh secret set COUCHDB_PASSWORD      --repo <owner>/<repo>
    ```
-3. Push to `main` (or run the **Deploy** workflow manually). The workflow runs the type check, deploys the Worker, its SQLite Durable Object class, R2 bucket, and the `COUCHDB_PASSWORD` secret, then prints the deployed URL.
+3. Run the workflow once (`gh workflow run Deploy`), then just push to `main`.
+
+Step-by-step instructions, the exact token permissions, verification, rollback,
+and troubleshooting are in **[docs/auto-deploy.md](docs/auto-deploy.md)**.
+
+> Keep `COUCHDB_PASSWORD` identical to the password your Obsidian devices use —
+> every deploy re-uploads it as the Worker secret.
 
 ### Option B — Cloudflare Workers Builds
 
