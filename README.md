@@ -57,6 +57,32 @@ touched by a deploy.
 Full guide, including connecting an existing Worker, rollback, and
 troubleshooting: **[docs/auto-deploy.md](docs/auto-deploy.md)**.
 
+#### Configuration at a glance
+
+Exactly one value is entered outside the repository:
+
+| Name | Type | Where | Value |
+| --- | --- | --- | --- |
+| `COUCHDB_PASSWORD` | Secret | Worker → Settings → Variables and secrets | the password Obsidian already uses |
+
+Everything else ships in `wrangler.jsonc` and is applied on every deploy:
+
+| Name | Value | Purpose |
+| --- | --- | --- |
+| `COUCHDB_USERNAME` | `admin` | basic-auth user |
+| `CORS_ORIGINS` | `app://obsidian.md,capacitor://localhost,http://localhost` | allowed browser origins |
+| `BACKUP_ENABLED` | `"true"` | scheduled (alarm) R2 backups |
+| `BACKUP_DATABASE` | `vault` | database being backed up |
+| `BACKUP_DAILY` | `30` | days of history kept |
+| `BACKUP_WEEKLY` | `8` | weeks of history kept |
+| `BACKUP_MONTHLY` | `24` | months of history kept |
+
+`POUCH_DATABASES` (Durable Object) and `BACKUP_BUCKET` (R2, `obsidian-sync-backups`)
+are bindings created by the deploy — not values to enter. Do not add the plain
+variables in the dashboard: a deploy resets them to the file. Optional build-time
+variable: `NODE_VERSION=24` if you do not want to rely on `.nvmrc`. Details:
+[docs/auto-deploy.md#environment-what-to-add-and-what-not-to](docs/auto-deploy.md#environment-what-to-add-and-what-not-to).
+
 ### Option B — Local deploy
 
 ```sh

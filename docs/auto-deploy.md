@@ -89,6 +89,96 @@ Create application → Continue with GitHub**; the build settings are the same.
   prefer, set a build variable `NODE_VERSION=24` instead. The repository needs
   Node 22.18+ or 24.11+.
 
+## Environment: what to add (and what not to)
+
+There are three kinds of configuration. Only one of them is typed into the
+dashboard.
+
+**Checklist:** dashboard → **Settings → Variables and secrets** contains exactly
+one entry, `COUCHDB_PASSWORD` (type: Secret). Everything else is either in
+`wrangler.jsonc` or created by the deploy.
+
+### 1. The only secret you must add
+
+| Name | Value | Where |
+| --- | --- | --- |
+| `COUCHDB_PASSWORD` | the password your Obsidian devices use | Worker → **Settings → Variables and secrets** → add as **Secret** |
+
+That is the complete list of dashboard entries. The existing `obsidian-sync`
+Worker already has it, so connecting Workers Builds requires **no new secret at
+all**. If you are creating a fresh Worker, add it once before the first sync.
+
+Adding the same password as a plain *variable* instead of a *secret* would
+expose it in the dashboard and in exports; use the Secret checkbox.
+
+### 2. Plain variables already in `wrangler.jsonc`
+
+These are deployed from the file on every build. Do **not** add them in the
+dashboard: a deploy overwrites dashboard variables with the file's values, and
+any dashboard-only variable in this Worker is removed because `wrangler.jsonc`
+does not set `keep_vars`.
+
+| Name | Value | Purpose |
+| --- | --- | --- |
+| `COUCHDB_USERNAME` | `admin` | Basic-auth user Obsidian sends |
+| `CORS_ORIGINS` | `app://obsidian.md,capacitor://localhost,http://localhost` | Origins allowed by CORS |
+| `BACKUP_ENABLED` | `"true"` | Enables the R2 backup path and its alarm |
+| `BACKUP_DATABASE` | `vault` | Which database is backed up |
+| `BACKUP_DAILY` | `30` | Distinct days of history preserved |
+| `BACKUP_WEEKLY` | `8` | Distinct weeks of history preserved |
+| `BACKUP_MONTHLY` | `24` | Distinct months of history preserved |
+
+To change any of them, edit `wrangler.jsonc`, commit, and push — that is the
+deploy.
+
+`CORS_ORIGINS` matters if you put the Worker behind a custom domain or a proxy:
+add that origin (comma-separated). `*` is accepted but lets any web page call
+the database, so avoid it.
+
+`BACKUP_*` retention values must be integers between 1 and 10000. The newest
+backup in each of the last N days, weeks, and months is kept and the rest are
+pruned. Setting `BACKUP_ENABLED` to `"false"` stops the scheduled (alarm)
+backups. Manual `POST /_backup` still works while the R2 binding is attached —
+use `scripts/deploy-storage.mjs` locally if you also want the binding removed.
+
+### 3. Bindings created by the deploy
+
+Not environment variables and not editable in the dashboard:
+
+| Binding | Type | Created from |
+| --- | --- | --- |
+| `POUCH_DATABASES` | Durable Object (`PouchDatabase`) | `durable_objects` + `migrations` in `wrangler.jsonc` |
+| `BACKUP_BUCKET` | R2 bucket `obsidian-sync-backups` | `r2_buckets` in `wrangler.jsonc`; created if missing |
+
+### Local development only
+
+`.dev.vars` (gitignored, mode 600) needs the same secret:
+
+```sh
+COUCHDB_PASSWORD=...
+```
+
+`.dev.vars.example` is the template. Builds and production never read this file.
+
+### The `dev` environment
+
+`wrangler.jsonc` also defines an optional `dev` environment that deploys a
+separate Worker named `obsidian-sync-dev`. It has its own database and needs its
+own `COUCHDB_PASSWORD`; it is not used by Workers Builds, which targets the
+top-level `obsidian-sync` Worker.
+
+### Test-only names you will see in the code
+
+Ignore these; they are read by staging and E2E scripts, never by the deployed
+Worker:
+
+| Prefix | Used by |
+| --- | --- |
+| `STAGING_*` | `scripts/` staging probes (CouchDB URL, MCP URL, tokens, disposable-vault guard) |
+| `E2E_*` | Obsidian end-to-end harness (`E2E_OBSIDIAN_CLI_TIMEOUT_MS`, `E2E_OBSIDIAN_DIAGNOSTICS_DIR`) |
+
+Setting any of them on the production Worker has no effect.
+
 ## First build
 
 The build log ends with something like:
