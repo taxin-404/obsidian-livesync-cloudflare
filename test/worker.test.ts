@@ -70,6 +70,19 @@ describe('CouchDB compatibility surface', () => {
     expect(preflight.headers.get('access-control-allow-origin')).toBe('app://obsidian.md');
   });
 
+  it('serves its connection details to browsers without credentials', async () => {
+    const response = await SELF.fetch(
+      new Request('https://pouch.test/', { headers: { accept: 'text/html,application/xhtml+xml' } }),
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('x-robots-tag')).toContain('noindex');
+    const html = await response.text();
+    expect(html).toContain('https://pouch.test');
+    expect(html).toContain('admin');
+    expect(html).toContain('test-password');
+  });
+
   it('supports the PouchDB HTTP document, bulk, changes, and attachment APIs', async () => {
     const db = remote(databaseName('lifecycle'));
     const created = await db.put({

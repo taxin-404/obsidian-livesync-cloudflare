@@ -2,6 +2,7 @@ import { diagnostic } from './diagnostics';
 import { backupRoute } from './backup/routes';
 import { authenticate } from './auth';
 import { couchError, json, readJson } from './http';
+import { isLandingRequest, landingPage } from './landing';
 import { PouchDatabase } from './pouch-database';
 import type { AppEnv } from './types';
 
@@ -25,6 +26,8 @@ export default {
       const url = new URL(request.url);
       if (url.pathname === '/_up') {
         response = json({ status: 'ok' });
+      } else if (isLandingRequest(request, url)) {
+        response = landingPage(request, env);
       } else {
         const authFailure = await authenticate(request, env);
         if (authFailure) diagnostic({ event: 'operation_end', operation: 'auth', outcome: 'error', status: authFailure.status });
