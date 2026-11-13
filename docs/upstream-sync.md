@@ -60,6 +60,35 @@ it is "new". Bumping the pin is what marks work as reviewed.
   deployment runs only the storage Worker, so they can normally be skipped.
 - **Dependencies changed** — port, then `npm ci` and the full suite.
 
+## Reviewing a new upstream release
+
+Start from the repository, not from the diff tool:
+
+1. Open
+   `https://github.com/robince/cloudflare-obsidian-livesync-mcp/compare/<pinned>...main`
+   and read the commits in order, including their descriptions.
+2. Check the upstream `README.md`/`COMPATIBILITY.md` diff for changed
+   requirements (runtime version, new binding, protocol behaviour).
+3. Run `npm run upstream:check` here. It fetches the same repository, so the
+   two views agree; the script adds what GitHub cannot show — which files **this**
+   clone has also edited.
+4. Read the patch of every commit you are considering:
+   `npm run upstream:diff -- <path>`.
+5. Apply the decision table below, then report before porting.
+
+### Before accepting a port
+
+- [ ] No new binding, cron, queue, or paid feature is required (free tier).
+- [ ] Any new Durable Object `migrations` tag is copied into `wrangler.jsonc`.
+- [ ] The alarm backup patch in `src/pouch-database.ts` still applies, or was
+      re-applied by hand.
+- [ ] `wrangler.jsonc` still has `name: obsidian-sync`, `crons: []`, the R2
+      binding, and the `BACKUP_*` values.
+- [ ] No upstream deploy script or `CLOUDFLARE_API_TOKEN` step was introduced.
+- [ ] `npm run check:storage` passes and the suites for the touched area pass.
+- [ ] `npm run dry-run` bundles.
+- [ ] If deployed: `GET /vault` answers, and an Obsidian edit reaches the server.
+
 ## Porting workflow
 
 1. `npm run upstream:check`

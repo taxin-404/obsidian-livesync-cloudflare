@@ -1,5 +1,9 @@
 # Repository Guidelines
 
+> **Asked whether upstream has a new release?** Read **Upstream updates** below
+> first, then `docs/upstream-sync.md`. This repository is a snapshot, not a git
+> fork: never `git merge upstream/main`, and report a verdict before porting.
+
 ## Project Structure & Module Organization
 
 This npm workspace provides a CouchDB-compatible Cloudflare Worker backed by PouchDB in SQLite Durable Objects, plus an optional MCP Worker.
@@ -11,9 +15,67 @@ This npm workspace provides a CouchDB-compatible Cloudflare Worker backed by Pou
 - `scripts/`: backup, diagnostics, dependency checks, staging utilities, and `upstream-sync.mjs`.
 - `docs/`, `COMPATIBILITY.md`, and `DEPLOY.md`: architecture constraints, operational procedures, and deployment guidance.
 
-## Upstream
+## Upstream updates
 
-This repository is a snapshot of `robince/cloudflare-obsidian-livesync-mcp` at the commit pinned in `upstream.json`, not a git fork with shared history. Never `git merge upstream/main`. Port upstream changes with `npm run upstream:check` → `upstream:diff` / `upstream:apply` → test → `upstream:accept -- --yes`, following `docs/upstream-sync.md`. Only the storage Worker is deployed, so changes under `apps/cloudflare-obsidian-mcp/` are optional.
+**Trigger:** the user says anything like "anything new upstream?", "the main repo
+has an update", or asks whether an upstream change is worth taking. Follow this
+section before answering, and before touching code.
+
+This repository is a snapshot of
+`https://github.com/robince/cloudflare-obsidian-livesync-mcp` at the commit in
+`upstream.json` — not a git fork with shared history. **Never run
+`git merge upstream/main`**; it merges unrelated trees.
+
+1. Read `upstream.json` (repository, branch, pinned commit) and open that
+   repository on GitHub to see the commits after the pin in their own context.
+2. Run `npm run upstream:check`. It fetches the real repository and prints the
+   commits and changed files since the pin, marking files this clone has also
+   edited.
+3. Read each commit's patch with `npm run upstream:diff -- <path>`. Do not judge
+   from the subject line alone.
+4. Decide with the rules below, then **report the verdict before porting**
+   unless the user already said "port it".
+5. Port with `npm run upstream:apply -- <path>` (clean files) or by hand (files
+   marked *changed here too*). Never apply a patch you have not read.
+6. Verify: `npm run check:storage`, the suites the change touches, and
+   `npm run dry-run`. If deployed, confirm `/vault` responds and one Obsidian
+   edit syncs.
+7. Only then `npm run upstream:accept -- --yes`, and commit `upstream.json`
+   with the ported files.
+
+### Is it good for this clone?
+
+| Upstream change | Verdict |
+| --- | --- |
+| Storage Worker protocol, revisions, sequence, compaction, auth, CORS | **Take** — this is the deployed surface. |
+| Backup format, verification, restore, retention | **Take**, and run the backup suites. |
+| Durable Object schema or a new `migrations` tag | **Take only with care** — copy the tag into `wrangler.jsonc` or existing data will not migrate. Explain the risk first. |
+| Dependency or security update | **Usually take**; then `npm ci`, `npm run check:storage`, `npm test`, `npm run dry-run`. |
+| MCP Worker (`apps/cloudflare-obsidian-mcp/`) | **Skip** unless a shared contract under `packages/livesync-contracts/` changed with it; only the storage Worker is deployed. |
+| Staging, E2E, or MCP tooling (`scripts/staging/`, `test/live`, MCP OAuth test config) | **Skip** unless the user asks for it. |
+| New Cloudflare binding, cron, queue, container, or paid feature | **Reject by default** — the account keeps this on the free tier with no free cron slots; alarms replace cron. Say what it would cost. |
+| Upstream deploy scripts that assume a `CLOUDFLARE_API_TOKEN` | **Skip** — this clone deploys through Workers Builds. |
+| README/docs describing upstream's own deployment | **Skip or adapt**; our docs describe `obsidian-sync`. |
+
+Local differences to preserve when porting: the alarm backup patch in
+`src/pouch-database.ts`, `wrangler.jsonc` (`name`, `crons: []`, R2 bucket,
+`BACKUP_*`), `.github/workflows/ci.yml`, `.nvmrc`, `scripts/generate-setup-uri.sh`,
+and the deployment docs. The client is Obsidian LiveSync 1.0.49 with E2EE on, so
+protocol changes must stay compatible with it.
+
+### Verdict format
+
+Answer the user in this shape, and be explicit about what you would skip:
+
+```
+Upstream  <repo>  <pinned> -> <head>, N commits since the pin
+Take      <commit / area> — why it matters here
+Skip      <commit / area> — why it does not apply
+Risk      migrations, protocol, free-tier cost, or none
+Plan      files to port, tests to run, deploy step
+```
+
+Details, troubleshooting and the porting commands: `docs/upstream-sync.md`.
 
 ## Build, Test, and Development Commands
 
