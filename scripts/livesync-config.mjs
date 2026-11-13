@@ -208,3 +208,25 @@ function remoteDatabaseName(remote, fallback) {
   const database = new URLSearchParams(remote.search ?? '').get('db');
   return database || fallback || 'vault';
 }
+
+const SETUP_URI_IN_PAGE = /id="v-uri"[^>]*>([\s\S]*?)</;
+const SETUP_PASSPHRASE_IN_PAGE = /id="v-pass"[^>]*>([\s\S]*?)</;
+
+const unescapeHtml = (value) =>
+  value
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&');
+
+/**
+ * Reads the pair the gated landing page renders. Used by rotation (the profile
+ * comes from there) and by the drift check (the page is its own link).
+ */
+export function readSetupPage(html) {
+  const uri = SETUP_URI_IN_PAGE.exec(html);
+  const passphrase = SETUP_PASSPHRASE_IN_PAGE.exec(html);
+  if (!uri || !passphrase) throw new Error('the page did not return a setup URI');
+  return { uri: unescapeHtml(uri[1]).trim(), passphrase: unescapeHtml(passphrase[1]).trim() };
+}

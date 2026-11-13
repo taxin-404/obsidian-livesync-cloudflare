@@ -6,6 +6,7 @@ import {
   decodeSetupUri,
   encryptValue,
   formatRemote,
+  readSetupPage,
   readVault,
   writeVault,
 } from './livesync-config.mjs';
@@ -38,24 +39,6 @@ export function generatePassword(random = randomBytes) {
 
 export function generateSetupPassphrase(random = randomBytes) {
   return Buffer.from(random(SETUP_PASSPHRASE_BYTES)).toString('base64url');
-}
-
-const SETUP_URI_IN_PAGE = /id="v-uri"[^>]*>([\s\S]*?)</;
-const SETUP_PASSPHRASE_IN_PAGE = /id="v-pass"[^>]*>([\s\S]*?)</;
-
-const unescapeHtml = (value) =>
-  value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&amp;/g, '&');
-
-function readSetupPage(html) {
-  const uri = SETUP_URI_IN_PAGE.exec(html);
-  const passphrase = SETUP_PASSPHRASE_IN_PAGE.exec(html);
-  if (!uri || !passphrase) throw new Error('the setup page did not return a setup URI');
-  return { uri: unescapeHtml(uri[1]).trim(), passphrase: unescapeHtml(passphrase[1]).trim() };
 }
 
 async function writePasswordFile(passwordFile, password) {
