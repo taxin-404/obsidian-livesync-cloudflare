@@ -1,144 +1,122 @@
-# Automatic deployment with GitHub Actions
+# Automatic deployment with Workers Builds
 
-Push to `main` and the Worker redeploys itself. No terminal, no Wrangler login on
-your machine. This guide covers the one-time setup, what the workflows do, how to
-verify a deploy, and how to roll back.
+Push to `main` and Cloudflare rebuilds and redeploys the Worker. There is **no
+Cloudflare API token** to create: Cloudflare's own GitHub app is the credential,
+and Workers Builds generates and stores its own deploy token.
 
-The repository already contains the two workflows; the only thing you must supply
-is a Cloudflare API token and three repository secrets.
+This is the same mechanism used by the other Workers on this account
+(`terabox-webdav-worker`), just attached to the existing `obsidian-sync` Worker
+so its URL and database survive.
 
-## What runs
+## How it works
 
-| Workflow | File | Trigger | Purpose |
-| --- | --- | --- | --- |
-| **CI** | `.github/workflows/ci.yml` | every push and pull request | Type-check and run the storage tests. Never deploys. |
-| **Deploy** | `.github/workflows/deploy.yml` | push to `main`, or manual | Type-check, write the password to a temporary `.dev.vars`, run `wrangler deploy`, delete the file. |
+```
+git push origin main
+        │
+        ▼
+Cloudflare Workers Builds
+  1. npm ci                  (Cloudflare installs dependencies)
+  2. npm run check:storage   (type-check, optional build command)
+  3. npx wrangler deploy     (deploy command, uses wrangler.jsonc)
+        │
+        ▼
+Worker obsidian-sync  +  Durable Object  +  R2 binding
+```
 
-A push to `main` therefore runs both. CI is the safety net; Deploy is what ships.
-
-The deploy:
-
-- uploads the storage Worker and its SQLite Durable Object class,
-- binds the `obsidian-sync-backups` R2 bucket (created if missing),
-- sets the `COUCHDB_PASSWORD` Worker secret from the repository secret,
-- leaves the cron trigger empty — backups run from a Durable Object alarm.
-
-It deploys **only the storage Worker**. The MCP Worker in `apps/` is not deployed.
+The deploy command is the same `wrangler deploy` you would run locally; the
+build service supplies the authentication. The Worker's existing secrets are
+not removed or rewritten by a deploy.
 
 ## Prerequisites
 
-- The repository is on GitHub and Actions are enabled (Settings → Actions → General).
-- You have access to the Cloudflare account that hosts the Worker.
-- A `workers.dev` subdomain is configured (dashboard → Workers & Pages → your
-  Worker → Settings → Domains & Routes). The first deploy of a brand-new account
-  fails without it.
-- Node.js is **not** required on your machine for this flow; GitHub runs it.
+- The Worker already exists in the account (`obsidian-sync`), or you are happy
+  to create one with the repository.
+- The Cloudflare GitHub app can see the repository. For a private repo, grant it
+  access during the connect flow (GitHub → Settings → Applications →
+  Cloudflare Workers → Configure → Repository access).
+- `wrangler.jsonc` is at the repository root and its `"name"` is `obsidian-sync`.
 
-## Step 1 — Create the API token
+### The name must match
 
-1. Open <https://dash.cloudflare.com/profile/api-tokens> → **Create Token**.
-2. Choose **Create Custom Token** (the *Edit Cloudflare Workers* template also
-   works, but then add the R2 permission below).
-3. Name it something recognisable, e.g. `obsidian-livesync-github`.
-4. Add these **Account** permissions:
+Workers Builds requires the Worker name in the dashboard to equal `name` in the
+Wrangler configuration. Ours does:
 
-   | Permission | Access | Why |
-   | --- | --- | --- |
-   | Workers Scripts | Edit | upload the Worker and Durable Object |
-   | Workers R2 Storage | Edit | create/bind the backup bucket |
-   | Account Settings | Read | optional; lets Wrangler resolve the account |
-
-5. **Account Resources:** include the account that hosts the Worker (not "All
-   accounts"). **Zone Resources:** none.
-6. Set an expiry if you want one (a year is reasonable), then **Continue to
-   summary → Create Token**.
-7. Copy the token now — the dashboard shows it only once.
-
-> Wrangler's browser login (`wrangler login`) cannot mint API tokens; it returns
-> `403` on the token API. Creating the token in the dashboard is the supported
-> path.
-
-## Step 2 — Find the account ID
-
-Either:
-
-- open <https://dash.cloudflare.com> and copy the hex string from the URL
-  (`dash.cloudflare.com/<account-id>/...`), or
-- run `npx wrangler whoami` and copy the **Account ID** column.
-
-## Step 3 — Add the repository secrets
-
-The `gh` CLI prompts for each value, so nothing lands in your shell history:
-
-```sh
-gh secret set CLOUDFLARE_API_TOKEN  --repo <owner>/<repo>
-gh secret set CLOUDFLARE_ACCOUNT_ID --repo <owner>/<repo>
-gh secret set COUCHDB_PASSWORD      --repo <owner>/<repo>
-```
-
-Or use **Settings → Secrets and variables → Actions → New repository secret** in
-the browser, with the same three names.
-
-| Secret | Value |
+| Where | Value |
 | --- | --- |
-| `CLOUDFLARE_API_TOKEN` | the token from Step 1 |
-| `CLOUDFLARE_ACCOUNT_ID` | the ID from Step 2 |
-| `COUCHDB_PASSWORD` | the password your Obsidian clients already use |
+| Dashboard Worker | `obsidian-sync` |
+| `wrangler.jsonc` | `"name": "obsidian-sync"` |
 
-Confirm with `gh secret list --repo <owner>/<repo>` — you should see all three
-names and no values.
+If you rename either one, the build fails with:
 
-### Keep the password identical
-
-`COUCHDB_PASSWORD` is uploaded as the Worker secret on **every** deploy. If it
-differs from the password configured in Obsidian, the next deploy will make
-every client fail with `401 Unauthorized`.
-
-- If the Worker is already running, copy the current password from your local
-  `.dev.vars` (`sed -n 's/^COUCHDB_PASSWORD=//p' .dev.vars`) or your password
-  manager.
-- Rotating the password later means updating this secret **and** every Obsidian
-  device in the same sitting.
-
-## Step 4 — Run the first deploy
-
-Manual run (recommended for the first time, so you see the log):
-
-```sh
-gh workflow run Deploy --repo <owner>/<repo>
-gh run watch --repo <owner>/<repo>
+```
+✘ [ERROR] The name in your Wrangler configuration file (...) must match the name of your Worker.
 ```
 
-Or simply push to `main`:
+## Connect the existing Worker
 
-```sh
-git push origin main
-```
+Do this in the dashboard for `obsidian-sync` — **do not create a second Worker**,
+or you will start with an empty database and a different URL.
 
-Expected tail of a successful run:
+1. Open <https://dash.cloudflare.com> → **Workers & Pages** → **obsidian-sync**.
+2. **Settings → Builds → Connect**.
+3. Choose **GitHub**, authorise/refresh the app if asked, and select
+   `taxin-404/obsidian-livesync-cloudflare`.
+4. Branch: `main`.
+5. Build settings:
+
+   | Field | Value |
+   | --- | --- |
+   | Build command | `npm run check:storage` |
+   | Deploy command | `npx wrangler deploy` |
+   | Root directory | `/` |
+   | Preview builds | off |
+
+6. Save, then push a commit to `main` (or use **Retry build**).
+
+For a brand-new installation, the equivalent entry point is **Workers & Pages →
+Create application → Continue with GitHub**; the build settings are the same.
+
+### Why these values
+
+- **`npm run check:storage`** runs `tsc --noEmit`. A type error fails the build
+  before it can break the live Worker. Leave the field empty if you prefer a
+  pure deploy.
+- **`npx wrangler deploy`** reads `wrangler.jsonc`, which already names the
+  Worker, its Durable Object class, the R2 binding, and `crons: []`.
+- **No `npm ci` in the build command** — Cloudflare runs it automatically before
+  the build.
+- **Node 24** comes from the committed `.nvmrc`; Workers Builds reads it. If you
+  prefer, set a build variable `NODE_VERSION=24` instead. The repository needs
+  Node 22.18+ or 24.11+.
+
+## First build
+
+The build log ends with something like:
 
 ```
 Total Upload: ... KiB / gzip: ... KiB
 Uploaded obsidian-sync (x.xx sec)
 Deployed obsidian-sync triggers
-  https://obsidian-sync.<subdomain>.workers.dev
+  https://obsidian-sync.tes1ing.workers.dev
 ```
 
-## Step 5 — Verify
+The first build deploys the same code that is running now, so Obsidian keeps
+working. The `COUCHDB_PASSWORD` Worker secret is left in place.
+
+## Verify
 
 ```sh
-curl -u admin:'YOUR_PASSWORD' https://obsidian-sync.<subdomain>.workers.dev/vault
+curl -u admin:'YOUR_PASSWORD' https://obsidian-sync.tes1ing.workers.dev/vault
 ```
 
-A healthy response is JSON containing `"doc_count"` and `"update_seq"`. Then in
-Obsidian, make an edit and watch it reach the server:
+Expect JSON with `"doc_count"` and `"update_seq"`. For live request logs:
 
 ```sh
 npx wrangler tail obsidian-sync
 ```
 
-You should see `POST /vault/_revs_diff 200`, `POST /vault/_bulk_docs 201`, and the
-long-poll `POST /vault/_changes 200`.
+An edit in Obsidian should produce `POST /vault/_revs_diff 200`,
+`POST /vault/_bulk_docs 201`, and the long-poll `POST /vault/_changes 200`.
 
 ## Day-2 operations
 
@@ -148,65 +126,59 @@ long-poll `POST /vault/_changes 200`.
 git commit -am "..." && git push origin main
 ```
 
-That is the whole workflow. Re-run a failed deploy from the Actions tab
-(**Re-run all jobs**) or with `gh run rerun <run-id>`.
+That is the whole workflow. The build appears under the Worker's **Deployments**
+tab.
 
 ### Roll back
 
-Wrangler keeps the previous version; roll the Worker back without touching git:
+Either redeploy an older commit from the dashboard (**Deployments → … → Roll
+back**), or from a machine with Wrangler logged in:
 
 ```sh
 npx wrangler rollback obsidian-sync
 ```
 
-Or revert the commit and push — the workflow deploys the reverted code. Backups
-in R2 are untouched by either path.
+Neither touches the R2 backups.
 
-### Pause auto-deploy
+### Pause automatic deploys
 
-```sh
-gh workflow disable Deploy --repo <owner>/<repo>
-gh workflow enable  Deploy --repo <owner>/<repo>   # later
-```
+Worker → **Settings → Builds → Disconnect**. The Worker stays up with its current
+code; re-connect when you want automatic deploys again.
 
-Disabling does not remove the Worker; it only stops push-triggered deploys.
-Manual runs are blocked too while disabled.
+### Change the branch
 
-### Rotate the API token
+**Settings → Builds** → edit the branch. Useful if you want `main` to stay
+stable and deploy from `production`.
 
-Create a new token, `gh secret set CLOUDFLARE_API_TOKEN`, then revoke the old one
-in the dashboard. Nothing else changes.
+### Rotate the password
+
+Builds never see the password. Change it on the Worker
+(**Settings → Variables and secrets**) or with
+`npx wrangler secret put COUCHDB_PASSWORD`, then update every Obsidian device in
+the same sitting.
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `Authentication error [code: 10000]` | token lacks **Workers Scripts: Edit**, or is scoped to another account | recreate the token with the permissions above |
-| `Missing COUCHDB_PASSWORD repository secret` | secret name typo or not set | `gh secret list`, then set it again |
-| `R2 bucket ... does not exist` / 10000 on bucket creation | token lacks **Workers R2 Storage: Edit** | add the permission |
-| `Could not find a wrangler config` | workflow run from a subdirectory, or `wrangler.jsonc` deleted | run from the repository root |
-| Deploy green but Obsidian gets `401` | repository password differs from the clients' password | set the original password and redeploy, or update every client |
-| `workers.dev` URL missing / `Subdomain not configured` | no account subdomain yet | dashboard → Workers & Pages → set the subdomain, re-run |
-| Deploy workflow never starts | Actions disabled, or push went to a branch other than `main` | Settings → Actions → General; check the branch |
-| CI red | a type error or a failing storage test | run `npm ci && npm run check:storage && npm test` locally |
+| `The name in your Wrangler configuration file ... must match` | dashboard Worker name ≠ `wrangler.jsonc` `name` | rename one to `obsidian-sync` |
+| Repository not listed when connecting | Cloudflare GitHub app lacks access to the private repo | GitHub → Settings → Applications → Cloudflare Workers → Configure → add the repo |
+| Build fails at `npm ci` with an engine error | build image ignored `.nvmrc` | set build variable `NODE_VERSION=24` in Settings → Builds |
+| `Missing script: "build"` | build command left as `npm run build` | use `npm run check:storage` or leave it empty |
+| Build succeeds, site unchanged | build ran on another branch | check the branch in Settings → Builds |
+| Preview builds fail on a side branch | preview command `npx wrangler preview` is not used by this project | turn preview builds off |
+| Obsidian returns `401` after a deploy | the Worker password was changed | restore the old secret, or update every client |
+| Builds stuck queued | account build concurrency | wait, or cancel the older build |
 
-The Deploy workflow writes the password to `.dev.vars` only for the duration of
-the job (`chmod 600`) and deletes it in an `always()` step. Secrets are masked in
-logs and are not exposed to pull requests from forks.
+## Difference from GitHub Actions
 
-## Alternative: Cloudflare Workers Builds
+An earlier revision of this repository shipped a GitHub Actions deploy workflow.
+That path needs a `CLOUDFLARE_API_TOKEN` repository secret because GitHub's
+runners have no session in your Cloudflare account. Workers Builds needs no
+token, so it is the only automatic path now; `.github/workflows/ci.yml` still
+runs the type check and tests on GitHub, but it never deploys.
 
-If you would rather not create an API token, Cloudflare can build the repository
-itself:
-
-1. Dashboard → **Workers & Pages → Create → Import a repository**, pick the repo.
-2. Build command: `npm ci`
-3. Deploy command: `npx wrangler deploy --config wrangler.jsonc`
-4. Worker → Settings → Variables and secrets → add `COUCHDB_PASSWORD`
-   (and the `BACKUP_*` values already present in `wrangler.jsonc`).
-5. Push to `main` to build.
-
-Workers Builds deploys on push exactly like the Actions workflow. You lose the
-CI gate and the explicit secret-file handling, and the password secret must be
-managed in the dashboard instead of the repository. Do not enable both unless
-you deliberately want two deploy paths racing.
+If you ever do want a third-party CI deploy, create an account-scoped token with
+`Workers Scripts: Edit` and `Workers R2 Storage: Edit`, store it as
+`CLOUDFLARE_API_TOKEN`, and run
+`node scripts/deploy-storage.mjs wrangler.jsonc "" --secrets-file .dev.vars`.

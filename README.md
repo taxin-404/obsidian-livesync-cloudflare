@@ -14,7 +14,8 @@ Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince
 
 | Change | Why |
 | --- | --- |
-| GitHub Actions CI + deploy workflows | Push to `main` deploys the Worker. |
+| Workers Builds auto-deploy | Cloudflare builds and deploys on every push to `main`, with no API token. |
+| GitHub Actions CI | Type-check and storage tests on every push and pull request; never deploys. |
 | Durable Object alarm for backups | Works even when the account's five free cron slots are full. The alarm calls the same `createBackup(..., true)` path as the cron handler (skips before 03:00 UTC and after the day's first success, so failures retry hourly). |
 | `scripts/generate-setup-uri.sh` | Produces the `obsidian://setuplivesync?...` URI needed by the plugin's onboarding wizard. |
 | `wrangler.jsonc` with `crons: []` | The alarm replaces the cron trigger; add a cron only if you prefer it. |
@@ -36,36 +37,27 @@ One Durable Object per database (one vault). The plugin's E2EE passphrase encryp
 
 ## Deploy
 
-### Option A — GitHub Actions (included)
+### Option A — Workers Builds (no API token)
 
-Push to `main` and the Worker redeploys itself.
+Connect the repository once, then every push to `main` builds and deploys.
 
-1. Create a Cloudflare **API token**: dashboard → *My Profile → API Tokens → Create Token*,
-   with `Workers Scripts: Edit` and `Workers R2 Storage: Edit`, scoped to your account.
-2. Add three repository secrets:
-   ```sh
-   gh secret set CLOUDFLARE_API_TOKEN  --repo <owner>/<repo>
-   gh secret set CLOUDFLARE_ACCOUNT_ID --repo <owner>/<repo>
-   gh secret set COUCHDB_PASSWORD      --repo <owner>/<repo>
-   ```
-3. Run the workflow once (`gh workflow run Deploy`), then just push to `main`.
+1. Dashboard → **Workers & Pages** → **obsidian-sync** → **Settings → Builds → Connect**
+   (for a fresh install: **Create application → Continue with GitHub**).
+2. Repository `taxin-404/obsidian-livesync-cloudflare`, branch `main`.
+3. Build command `npm run check:storage`, deploy command `npx wrangler deploy`,
+   root `/`, preview builds off.
+4. Save and push to `main`.
 
-Step-by-step instructions, the exact token permissions, verification, rollback,
-and troubleshooting are in **[docs/auto-deploy.md](docs/auto-deploy.md)**.
+No Cloudflare API token is involved: Cloudflare's GitHub app is the credential,
+and the build service manages its own deploy token. The dashboard Worker name
+(`obsidian-sync`) already matches `name` in `wrangler.jsonc`, which Workers
+Builds requires. Existing Worker secrets, including `COUCHDB_PASSWORD`, are not
+touched by a deploy.
 
-> Keep `COUCHDB_PASSWORD` identical to the password your Obsidian devices use —
-> every deploy re-uploads it as the Worker secret.
+Full guide, including connecting an existing Worker, rollback, and
+troubleshooting: **[docs/auto-deploy.md](docs/auto-deploy.md)**.
 
-### Option B — Cloudflare Workers Builds
-
-No API token needed; Cloudflare builds on push.
-
-1. Dashboard → *Workers & Pages → Create → Import a repository* → pick this repo.
-2. Build command: `npm ci` — Deploy command: `npx wrangler deploy --config wrangler.jsonc`.
-3. Add the Worker secret `COUCHDB_PASSWORD` (Settings → Variables and secrets). Deploying does not remove existing secrets.
-4. Push to `main` to trigger a build.
-
-### Option C — Local deploy
+### Option B — Local deploy
 
 ```sh
 git clone <this repo> && cd <repo>
