@@ -151,6 +151,20 @@ the Worker is not named `live`, add `--worker <name>`. Both commands require the
 gate to use `COUCHDB_PASSWORD`, so leave `PAGE_PASSWORD` unset or set it to the
 same value.
 
+If the password was changed outside this tool — in the Cloudflare dashboard, for
+example — no device can authenticate and the page cannot be opened, so a normal
+rotation has no profile to start from. Rebuild all three secrets from the vault
+instead:
+
+```sh
+npm run rotate:password -- --vault ~/Documents/notes --rebuild
+npm run check:secrets -- --vault ~/Documents/notes
+```
+
+`--rebuild` refuses while the saved password still works, takes the new-device
+profile from the vault's own settings, keeps the setup URI under the Worker's
+5.1 kB secret limit, and gives every device the new setup URI and passphrase.
+
 ## Backups and restore
 
 - Daily after **03:00 UTC** via a Durable Object alarm; 30 daily, 8 weekly, 24 monthly recovery points in R2.

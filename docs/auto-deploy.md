@@ -263,6 +263,22 @@ gated page; there is no grace period for the old password.
 setup URI password, setup URI device profile, vault connection — and exits 1 on
 drift. It never prints a secret.
 
+If the Worker's password was changed outside this tool (the dashboard, a build
+secret edit, or a lost value), no device can authenticate and the gated page
+cannot be opened. A normal rotation needs that page as its profile, so rebuild
+all three secrets from the vault instead:
+
+```sh
+npm run rotate:password -- --vault ~/Documents/notes --rebuild
+npm run check:secrets -- --vault ~/Documents/notes
+```
+
+`--rebuild` verifies first that the saved password really is rejected, builds a
+minimal new-device profile from the vault's encryption settings, and replaces
+`SETUP_URI`, `SETUP_URI_PASSPHRASE` and `COUCHDB_PASSWORD` together. It has no
+old values to restore, so it reports exactly what it could not verify instead
+of pretending to roll back.
+
 Wrangler needs to know which account owns the Worker when the login can see more
 than one: add `--account-id <id>` to `rotate:password`, or export
 `CLOUDFLARE_ACCOUNT_ID` first. Without it the preflight fails before anything is
@@ -289,6 +305,7 @@ one of them may already hold the new password or the encrypted settings.
 | Build succeeds, site unchanged | build ran on another branch | check the branch in Settings → Builds |
 | Preview builds fail on a side branch | preview command `npx wrangler preview` is not used by this project | turn preview builds off |
 | Obsidian returns `401` after a deploy | the Worker password was changed | `npm run check:secrets -- --vault <path>`, then `npm run rotate:password -- --vault <path>`; every device re-pairs |
+| Every device gets `401` and the setup page will not open | the password was changed outside the tool, so no profile can be read | `npm run rotate:password -- --vault <path> --rebuild`, then re-pair every device |
 | Builds stuck queued | account build concurrency | wait, or cancel the older build |
 
 ## Difference from GitHub Actions

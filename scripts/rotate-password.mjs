@@ -23,6 +23,10 @@ const SETUP_PASSPHRASE_BYTES = 24;
 const VERIFY_ATTEMPTS = 6;
 const VERIFY_DELAY_MS = 2000;
 
+// Cloudflare rejects a text secret larger than 5.1 kB, and the URI is stored
+// percent-encoded. Stay a little below so the failure is caught before a push.
+const SETUP_URI_LIMIT = 4800;
+
 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomBytes(length) {
@@ -109,6 +113,31 @@ async function stageLocalFiles({ state, passwordFile, password }) {
   }
 }
 
+/**
+ * A device profile rebuilt from the vault's own settings. The page is the
+ * normal template, but it can only be opened with the current password; when
+ * that password no longer works, the vault is the only trustworthy source.
+ * Only the settings that decide how existing documents are read and written
+ * travel: everything else stays at the plugin's defaults for a new device, and
+ * the result stays well under the 5.1 kB Worker-secret limit.
+ */
+const PROFILE_SETTING_KEYS = [
+  'encrypt',
+  'usePathObfuscation',
+  'encryptInternalMetadata',
+  'customChunkSize',
+  'enableCompression',
+  'minimumChunkSize',
+];
+
+function profileFromVault(state) {
+  const profile = {};
+  for (const key of PROFILE_SETTING_KEYS) {
+    if (state.data[key] !== undefined) profile[key] = state.data[key];
+  }
+  return profile;
+}
+
 async function commitStaged({ staged, state, passwordFile }) {
   try {
     await rename(staged.passwordTemporary, passwordFile);
@@ -126,13 +155,17 @@ async function commitStaged({ staged, state, passwordFile }) {
   }
 }
 
-function buildSteps({ state, passwordFile, dryRun }) {
+function buildSteps({ state, passwordFile, dryRun, rebuild }) {
   const database = databaseName(state.remote, state);
   const lines = [
-    `${dryRun ? 'Dry run — nothing was changed.' : 'Rotated.'} Target: ${state.remote.host}, database ${database}, user ${state.remote.user}.`,
-    dryRun
-      ? 'A real run would stage the local files, push and verify SETUP_URI and SETUP_URI_PASSPHRASE, then push and verify COUCHDB_PASSWORD.'
-      : 'Staged the local files, pushed and verified SETUP_URI and SETUP_URI_PASSPHRASE, then pushed and verified COUCHDB_PASSWORD.',
+    `${dryRun ? 'Dry run — nothing was changed.' : rebuild ? 'Rebuilt.' : 'Rotated.'} Target: ${state.remote.host}, database ${database}, user ${state.remote.user}.`,
+    rebuild
+      ? dryRun
+        ? 'A real run would rebuild the setup URI from the vault, then replace SETUP_URI, SETUP_URI_PASSPHRASE and COUCHDB_PASSWORD and verify the page and the database.'
+        : 'Rebuilt the setup URI from the vault, replaced SETUP_URI, SETUP_URI_PASSPHRASE and COUCHDB_PASSWORD, and verified the page and the database.'
+      : dryRun
+        ? 'A real run would stage the local files, push and verify SETUP_URI and SETUP_URI_PASSPHRASE, then push and verify COUCHDB_PASSWORD.'
+        : 'Staged the local files, pushed and verified SETUP_URI and SETUP_URI_PASSPHRASE, then pushed and verified COUCHDB_PASSWORD.',
     'Phone or other device: open LiveSync → Remote configuration → import the setup URI and passphrase shown on the gated page. Every paired device must re-pair; the old password stops working immediately.',
     'Desktop: quit and reopen Obsidian, then wait for "↑ 0 ↓ 0" before editing.',
     dryRun
@@ -234,6 +267,7 @@ export async function rotate(options) {
     random = randomBytes,
     dryRun = false,
     force = false,
+    rebuild = false,
     verifyAttempts = VERIFY_ATTEMPTS,
     verifyDelayMs = VERIFY_DELAY_MS,
     sleep = defaultSleep,
@@ -253,20 +287,30 @@ export async function rotate(options) {
   const password = generatePassword(random);
   const setupPassphrase = generateSetupPassphrase(random);
 
-  const html = await fetchPage(previousPassword);
-  let page;
-  try {
-    page = readSetupPage(html);
-  } catch (error) {
-    throw new Error(
-      `${error.message} — the gate password must be COUCHDB_PASSWORD (leave PAGE_PASSWORD unset or set it to the same value)`,
-    );
-  }
+  let page = { uri: null, passphrase: null };
   let profile;
-  try {
-    profile = await decodeSetupUri(page.uri, page.passphrase);
-  } catch {
-    throw new Error("the page's passphrase did not decrypt its setup URI");
+  if (rebuild) {
+    const currentStatus = await fetchAuth(previousPassword);
+    if (currentStatus === 200) {
+      throw new Error(
+        'the saved password still authenticates — the deployment is not locked out, so run a normal rotation without --rebuild',
+      );
+    }
+    profile = profileFromVault(state);
+  } else {
+    const html = await fetchPage(previousPassword);
+    try {
+      page = readSetupPage(html);
+    } catch (error) {
+      throw new Error(
+        `${error.message} — the gate password must be COUCHDB_PASSWORD (leave PAGE_PASSWORD unset or set it to the same value); if that password was lost, run with --rebuild`,
+      );
+    }
+    try {
+      profile = await decodeSetupUri(page.uri, page.passphrase);
+    } catch {
+      throw new Error("the page's passphrase did not decrypt its setup URI");
+    }
   }
 
   const built = await buildProfile({
@@ -287,8 +331,13 @@ export async function rotate(options) {
   if (JSON.stringify(decoded) !== JSON.stringify(built.settings)) {
     throw new Error('the new setup URI did not survive its own round trip');
   }
+  if (built.uri.length > SETUP_URI_LIMIT) {
+    throw new Error(
+      `the new setup URI is ${built.uri.length} bytes, over the ${SETUP_URI_LIMIT}-byte Worker secret limit — the profile carries too many settings`,
+    );
+  }
 
-  const steps = buildSteps({ state, passwordFile, dryRun });
+  const steps = buildSteps({ state, passwordFile, dryRun, rebuild });
   if (dryRun) return { password, setupUri: built.uri, setupPassphrase, steps, dryRun: true };
 
   const staged = await stageLocalFiles({ state, passwordFile, password });
@@ -307,21 +356,23 @@ export async function rotate(options) {
     await push('SETUP_URI', built.uri);
     await push('SETUP_URI_PASSPHRASE', setupPassphrase);
 
-    // The gate still uses the old password here, so this proves the page
-    // serves the new pair before the password itself moves.
-    await verifyPage({
-      fetchPage,
-      password: previousPassword,
-      setupUri: built.uri,
-      setupPassphrase,
-      newPassword: password,
-      attempts: verifyAttempts,
-      delayMs: verifyDelayMs,
-      sleep,
-    });
-    const stillWorks = await fetchAuth(previousPassword);
-    if (stillWorks !== 200) {
-      throw new Error(`the current password stopped authenticating before the server password changed (status ${stillWorks})`);
+    if (!rebuild) {
+      // The gate still uses the old password here, so this proves the page
+      // serves the new pair before the password itself moves.
+      await verifyPage({
+        fetchPage,
+        password: previousPassword,
+        setupUri: built.uri,
+        setupPassphrase,
+        newPassword: password,
+        attempts: verifyAttempts,
+        delayMs: verifyDelayMs,
+        sleep,
+      });
+      const stillWorks = await fetchAuth(previousPassword);
+      if (stillWorks !== 200) {
+        throw new Error(`the current password stopped authenticating before the server password changed (status ${stillWorks})`);
+      }
     }
 
     await push('COUCHDB_PASSWORD', password);
@@ -338,16 +389,18 @@ export async function rotate(options) {
     });
   } catch (error) {
     await discardFiles([staged.passwordTemporary, staged.vaultTemporary]);
-    const rollback = await rollBack({
-      putSecret,
-      pushed,
-      previous: {
-        COUCHDB_PASSWORD: previousPassword,
-        SETUP_URI: page.uri,
-        SETUP_URI_PASSPHRASE: page.passphrase,
-      },
-      passwordFile,
-    });
+    const rollback = rebuild
+      ? ' — the old secret values were unknown, so nothing was restored; the staged local files were discarded. Re-run with --rebuild once the cause is fixed, or read the new values from the Cloudflare dashboard'
+      : await rollBack({
+          putSecret,
+          pushed,
+          previous: {
+            COUCHDB_PASSWORD: previousPassword,
+            SETUP_URI: page.uri,
+            SETUP_URI_PASSPHRASE: page.passphrase,
+          },
+          passwordFile,
+        });
     throw new Error(`${error.message}${rollback}`);
   }
 
@@ -369,6 +422,7 @@ export function parseArgs(argv) {
     vault: '',
     worker: process.env.LIVESYNC_WORKER ?? 'live',
     dryRun: false,
+    rebuild: false,
     force: false,
     json: false,
   };
@@ -388,6 +442,8 @@ export function parseArgs(argv) {
       index++;
     } else if (flag === '--dry-run') {
       args.dryRun = true;
+    } else if (flag === '--rebuild') {
+      args.rebuild = true;
     } else if (flag === '--force') {
       args.force = true;
     } else if (flag === '--json') {
@@ -411,6 +467,7 @@ async function main() {
     fetchAuth: adapters.fetchAuth,
     obsidianRunning: adapters.obsidianRunning,
     dryRun: args.dryRun,
+    rebuild: args.rebuild,
     force: args.force,
   });
   if (args.json) {

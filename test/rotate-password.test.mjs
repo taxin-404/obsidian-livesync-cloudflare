@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
-import { encodeSetupUri, readVault } from '../scripts/livesync-config.mjs';
+import { encodeSetupUri, decodeSetupUri, readSetupPage, readVault } from '../scripts/livesync-config.mjs';
 import { fixture, pageHtml, profileFor, snapshot } from './helpers/vault-fixture.mjs';
 import { generatePassword, generateSetupPassphrase, parseArgs, rotate } from '../scripts/rotate-password.mjs';
 
@@ -24,7 +24,7 @@ async function deployment(vault, overrides = {}) {
   );
   let servedPassphrase = 'old-uri-pass';
   let passphraseLag = 0;
-  let gatePassword = vault.password;
+  let gatePassword = overrides.gatePassword ?? vault.password;
 
   const putSecret = async (name, value) => {
     if (overrides.failOn === name) throw new Error('boom');
@@ -91,6 +91,78 @@ test('rotates every secret and verifies before committing local files', async ()
   assert.equal(steps.includes(result.password), false);
   assert.equal(steps.includes(result.setupPassphrase), false);
   assert.equal(steps.includes(vault.password), false);
+});
+
+test('rebuild replaces the setup pair and the password when the saved password is lost', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault, { gatePassword: 'typed-in-the-dashboard' });
+  const result = await rotate({ ...vault, ...fake, rebuild: true, verifyDelayMs: 1 });
+
+  assert.deepEqual(fake.calls.map(([name]) => name), ['SETUP_URI', 'SETUP_URI_PASSPHRASE', 'COUCHDB_PASSWORD']);
+  assert.equal(fake.calls[2][1], result.password);
+  assert.equal(await fake.fetchAuth(result.password), 200);
+  assert.equal(await fake.fetchAuth(vault.password), 401);
+  assert.equal(await fake.fetchAuth('typed-in-the-dashboard'), 401);
+
+  const served = readSetupPage(await fake.fetchPage(result.password));
+  assert.equal(served.uri, result.setupUri);
+  assert.equal(served.passphrase, result.setupPassphrase);
+  const settings = await decodeSetupUri(served.uri, served.passphrase);
+  assert.equal(settings.couchDB_PASSWORD, result.password);
+  assert.equal(settings.passphrase, vault.e2eePassphrase);
+  assert.equal(settings.idDerivationKey, vault.idDerivationKey);
+  assert.equal(settings.activeConfigurationId, undefined, 'the new device is not pinned to an old remote id');
+  assert.equal(settings.encryptedPassphrase, '');
+  assert.equal(settings.configPassphraseStore, '');
+  assert.equal(settings.encrypt, true);
+  assert.equal(settings.liveSync, undefined, 'per-device preferences are not copied');
+  assert.ok(served.uri.length < 4800, 'the URI fits in a Worker secret');
+
+  const after = await readVault(vault.vaultDir);
+  assert.equal(after.remote.password, result.password);
+  assert.equal(after.legacyConnection.couchDB_PASSWORD, result.password);
+  assert.equal((await readFile(vault.passwordFile, 'utf8')).trim(), result.password);
+  assert.equal((await snapshot(vault)).dataTemp, null);
+  assert.equal((await snapshot(vault)).passwordTemp, null);
+});
+
+test('rebuild refuses when the saved password still works', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault);
+  const before = await snapshot(vault);
+  await assert.rejects(
+    () => rotate({ ...vault, ...fake, rebuild: true }),
+    /still authenticates.*without --rebuild/s,
+  );
+  assert.deepEqual(fake.calls, []);
+  assert.deepEqual(await snapshot(vault), before);
+});
+
+test('rebuild never opens the gated page', async () => {
+  const vault = await fixture();
+  const result = await rotate({
+    ...vault,
+    putSecret: async () => assert.fail('a dry run must not push'),
+    fetchPage: async () => assert.fail('a rebuild must not read the page'),
+    fetchAuth: async () => 401,
+    rebuild: true,
+    dryRun: true,
+  });
+  assert.match(result.steps.join('\n'), /rebuild/i);
+  assert.match(result.steps.join('\n'), /dry run/i);
+});
+
+test('refuses a setup URI too large for a Worker secret before touching the server', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault);
+  const before = await snapshot(vault);
+  const huge = { ...profileFor(), couchDB_CustomHeaders: 'x'.repeat(6000) };
+  await assert.rejects(
+    () => rotate({ ...vault, ...fake, fetchPage: async () => pageHtml(await encodeSetupUri(huge, 'old-uri-pass')) }),
+    /over the 4800-byte Worker secret limit/,
+  );
+  assert.deepEqual(fake.calls, []);
+  assert.deepEqual(await snapshot(vault), before);
 });
 
 test('restores the already-pushed secrets and discards the staged files when the password push fails', async () => {
@@ -234,21 +306,26 @@ test('parses the rotation arguments', () => {
     vault: '/v',
     worker: 'live',
     dryRun: true,
+    rebuild: false,
     force: false,
     json: false,
   });
 });
 
-test('accepts a password file override and an account id', () => {
-  assert.deepEqual(parseArgs(['--vault', '/v', '--password-file', '/p', '--account-id', 'abc', '--force', '--json']), {
-    vault: '/v',
-    worker: 'live',
-    dryRun: false,
-    force: true,
-    json: true,
-    passwordFile: '/p',
-    accountId: 'abc',
-  });
+test('accepts a password file override, an account id and --rebuild', () => {
+  assert.deepEqual(
+    parseArgs(['--vault', '/v', '--password-file', '/p', '--account-id', 'abc', '--force', '--json', '--rebuild']),
+    {
+      vault: '/v',
+      worker: 'live',
+      dryRun: false,
+      rebuild: true,
+      force: true,
+      json: true,
+      passwordFile: '/p',
+      accountId: 'abc',
+    },
+  );
 });
 
 test('rejects an unknown flag and a missing value', () => {
