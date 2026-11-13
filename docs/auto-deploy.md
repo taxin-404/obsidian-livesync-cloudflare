@@ -242,10 +242,26 @@ stable and deploy from `production`.
 
 ### Rotate the password
 
-Builds never see the password. Change it on the Worker
-(**Settings → Variables and secrets**) or with
-`npx wrangler secret put COUCHDB_PASSWORD`, then update every Obsidian device in
-the same sitting.
+Builds never see the password. Editing `COUCHDB_PASSWORD` under **Settings →
+Variables and secrets** changes only one of the four places that must agree, so
+the phones, the setup page and the desktop vault break at once. Rotate from a
+checkout instead:
+
+```sh
+npm run rotate:password -- --vault ~/Documents/notes
+npm run check:secrets -- --vault ~/Documents/notes
+```
+
+`rotate:password` regenerates the server password, the setup URI and its
+passphrase, writes the new password to
+`~/.config/obsidian-livesync/server-password`, rewrites the vault's encrypted
+connection, and verifies the change with the old and the new password. Quit
+Obsidian first. Every paired device must re-pair from the setup URI shown on the
+gated page; there is no grace period for the old password.
+
+`check:secrets` prints one line per link — server password, setup page gate,
+setup URI password, setup URI device profile, vault connection — and exits 1 on
+drift. It never prints a secret.
 
 ## Troubleshooting
 
@@ -257,7 +273,7 @@ the same sitting.
 | `Missing script: "build"` | build command left as `npm run build` | use `npm run check:storage` or leave it empty |
 | Build succeeds, site unchanged | build ran on another branch | check the branch in Settings → Builds |
 | Preview builds fail on a side branch | preview command `npx wrangler preview` is not used by this project | turn preview builds off |
-| Obsidian returns `401` after a deploy | the Worker password was changed | restore the old secret, or update every client |
+| Obsidian returns `401` after a deploy | the Worker password was changed | `npm run check:secrets -- --vault <path>`, then `npm run rotate:password -- --vault <path>`; every device re-pairs |
 | Builds stuck queued | account build concurrency | wait, or cancel the older build |
 
 ## Difference from GitHub Actions

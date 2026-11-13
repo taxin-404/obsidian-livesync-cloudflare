@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { encodeSetupUri } from '../scripts/livesync-config.mjs';
-import { checkSecrets } from '../scripts/check-secrets.mjs';
+import { checkSecrets, parseArgs } from '../scripts/check-secrets.mjs';
 import { fixture, pageHtml, profileFor } from './helpers/vault-fixture.mjs';
 
 const LINK_NAMES = [
@@ -136,4 +136,10 @@ test('never prints a secret', async () => {
   assert.equal(text.includes(vault.e2eePassphrase), false);
   assert.equal(text.includes(vault.idDerivationKey), false);
   assert.equal(text.includes('obsidian://setuplivesync'), false);
+});
+
+test('parses the drift-check arguments', () => {
+  assert.deepEqual(parseArgs(['--vault', '/v', '--json']), { vault: '/v', json: true });
+  assert.throws(() => parseArgs(['--nope']), /unknown argument: --nope/);
+  assert.throws(() => parseArgs(['--vault']), /--vault needs a value/);
 });

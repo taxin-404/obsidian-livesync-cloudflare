@@ -133,11 +133,19 @@ asks again. If neither password exists the page returns 503 instead of exposing
 anything. Requests from the plugin, PouchDB or curl do not ask for HTML and
 still get the authenticated CouchDB surface.
 
+The server password, the setup URI and its passphrase have to agree, or the
+phones and the page break together. Never edit one of them on its own — rotate
+all three and the local vault in one command:
+
 ```sh
-npx wrangler secret put COUCHDB_PASSWORD --name <worker>   # also gates the page
-npx wrangler secret put SETUP_URI --name <worker>
-npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>
+npm run rotate:password -- --vault ~/Documents/notes
+npm run check:secrets -- --vault ~/Documents/notes
 ```
+
+`rotate:password` regenerates every dependent secret, updates the vault and
+verifies the result; every paired device then re-pairs from the page.
+`check:secrets` prints one line per link and names the one that drifted, without
+printing a secret.
 
 ## Backups and restore
 
@@ -239,7 +247,8 @@ finish or reset that rebuild first, then unlock.
 
 ```sh
 npx wrangler tail obsidian-sync          # live logs
-npx wrangler secret put COUCHDB_PASSWORD --config wrangler.jsonc   # rotate password
+npm run rotate:password -- --vault ~/Documents/notes   # rotate every dependent secret
+npm run check:secrets -- --vault ~/Documents/notes     # find the link that drifted
 npx wrangler delete obsidian-sync        # tear down Worker
 npx wrangler r2 bucket delete obsidian-sync-backups
 ```

@@ -3,7 +3,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { encodeSetupUri, readVault } from '../scripts/livesync-config.mjs';
 import { fixture, pageHtml, profileFor, snapshot } from './helpers/vault-fixture.mjs';
-import { generatePassword, generateSetupPassphrase, rotate } from '../scripts/rotate-password.mjs';
+import { generatePassword, generateSetupPassphrase, parseArgs, rotate } from '../scripts/rotate-password.mjs';
 
 const page = async (profile = profileFor()) => pageHtml(await encodeSetupUri(profile, 'old-uri-pass'));
 
@@ -140,4 +140,30 @@ test('fails verification without writing local state when the old password still
     /old password still authenticates.*restored/s,
   );
   assert.deepEqual(await snapshot(vault), before);
+});
+
+test('parses the rotation arguments', () => {
+  assert.deepEqual(parseArgs(['--vault', '/v', '--worker', 'live', '--dry-run']), {
+    vault: '/v',
+    worker: 'live',
+    dryRun: true,
+    force: false,
+    json: false,
+  });
+});
+
+test('accepts a password file override', () => {
+  assert.deepEqual(parseArgs(['--vault', '/v', '--password-file', '/p', '--force', '--json']), {
+    vault: '/v',
+    worker: 'live',
+    dryRun: false,
+    force: true,
+    json: true,
+    passwordFile: '/p',
+  });
+});
+
+test('rejects an unknown flag and a missing value', () => {
+  assert.throws(() => parseArgs(['--nope']), /unknown argument: --nope/);
+  assert.throws(() => parseArgs(['--vault']), /--vault needs a value/);
 });

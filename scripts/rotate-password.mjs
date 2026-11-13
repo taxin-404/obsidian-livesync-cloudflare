@@ -1,5 +1,6 @@
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { webcrypto } from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 import {
   buildProfile,
   configPassphrase,
@@ -10,6 +11,7 @@ import {
   readVault,
   writeVault,
 } from './livesync-config.mjs';
+import { createAdapters, createSecretPutter, DEFAULT_PASSWORD_FILE, flagValue, printSteps } from './livesync-cli.mjs';
 
 const crypto = globalThis.crypto ?? webcrypto;
 const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -225,4 +227,64 @@ export async function rotate(options) {
   if (after.idDerivationKey !== state.idDerivationKey) throw new Error('the ID derivation key changed unexpectedly');
 
   return { password, setupUri: built.uri, setupPassphrase, steps };
+}
+
+export function parseArgs(argv) {
+  const args = {
+    vault: '',
+    worker: process.env.LIVESYNC_WORKER ?? 'live',
+    dryRun: false,
+    force: false,
+    json: false,
+  };
+  for (let index = 0; index < argv.length; index++) {
+    const flag = argv[index];
+    if (flag === '--vault') {
+      args.vault = flagValue(argv, index, flag);
+      index++;
+    } else if (flag === '--worker') {
+      args.worker = flagValue(argv, index, flag);
+      index++;
+    } else if (flag === '--password-file') {
+      args.passwordFile = flagValue(argv, index, flag);
+      index++;
+    } else if (flag === '--dry-run') {
+      args.dryRun = true;
+    } else if (flag === '--force') {
+      args.force = true;
+    } else if (flag === '--json') {
+      args.json = true;
+    } else {
+      throw new Error(`unknown argument: ${flag}`);
+    }
+  }
+  return args;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.vault) throw new Error('--vault is required, for example --vault ~/Documents/notes');
+  const adapters = createAdapters(args.vault);
+  const result = await rotate({
+    vaultDir: args.vault,
+    passwordFile: args.passwordFile ?? DEFAULT_PASSWORD_FILE,
+    putSecret: createSecretPutter(args.worker),
+    fetchPage: adapters.fetchPage,
+    fetchAuth: adapters.fetchAuth,
+    obsidianRunning: adapters.obsidianRunning,
+    dryRun: args.dryRun,
+    force: args.force,
+  });
+  if (args.json) {
+    console.log(JSON.stringify({ dryRun: Boolean(args.dryRun), steps: result.steps }, null, 2));
+    return;
+  }
+  printSteps(result.steps);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`Error: ${error.message}`);
+    process.exitCode = 1;
+  });
 }

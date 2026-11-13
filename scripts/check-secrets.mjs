@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 import { decodeSetupUri, parseRemote, readSetupPage, readVault } from './livesync-config.mjs';
+import { createAdapters, DEFAULT_PASSWORD_FILE, flagValue, printReport } from './livesync-cli.mjs';
 
 const link = (name, ok, detail) => ({ name, ok, detail });
 
@@ -163,4 +165,49 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
 
   const ok = links.every((entry) => entry.ok);
   return { ok, links, exitCode: ok ? 0 : 1 };
+}
+
+export function parseArgs(argv) {
+  const args = { vault: '', json: false };
+  for (let index = 0; index < argv.length; index++) {
+    const flag = argv[index];
+    if (flag === '--vault') {
+      args.vault = flagValue(argv, index, flag);
+      index++;
+    } else if (flag === '--password-file') {
+      args.passwordFile = flagValue(argv, index, flag);
+      index++;
+    } else if (flag === '--json') {
+      args.json = true;
+    } else {
+      throw new Error(`unknown argument: ${flag}`);
+    }
+  }
+  return args;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (!args.vault) throw new Error('--vault is required, for example --vault ~/Documents/notes');
+  const adapters = createAdapters(args.vault);
+  const report = await checkSecrets({
+    vaultDir: args.vault,
+    passwordFile: args.passwordFile ?? DEFAULT_PASSWORD_FILE,
+    fetchPage: adapters.fetchPage,
+    fetchAuth: adapters.fetchAuth,
+  });
+  if (args.json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printReport(report);
+    if (!report.ok) console.log(`\nFix: npm run rotate:password -- --vault ${args.vault}`);
+  }
+  process.exitCode = report.exitCode;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error(`Error: ${error.message}`);
+    process.exitCode = 1;
+  });
 }
