@@ -205,6 +205,25 @@ describe('CouchDB compatibility surface', () => {
     expect(lines.at(-1)).toMatchObject({ last_seq: 2, pending: 0 });
   });
 
+  it('reads _all_docs keys supplied as a query parameter', async () => {
+    const name = databaseName('all-docs-keys');
+    const db = remote(name);
+    await db.bulkDocs([
+      { _id: 'version', type: 'plain', value: 1 },
+      { _id: 'other', type: 'plain', value: 2 },
+    ]);
+
+    const keys = JSON.stringify(['version', 'missing']);
+    const response = await couchFetch(`/${name}/_all_docs?keys=${encodeURIComponent(keys)}&include_docs=true`);
+    expect(response.status).toBe(200);
+    const body = await response.json() as {
+      rows: Array<{ key: string; doc?: { value?: number }; error?: string }>;
+    };
+    expect(body.rows.map((row) => row.key)).toEqual(['version', 'missing']);
+    expect(body.rows[0].doc).toMatchObject({ _id: 'version', value: 1 });
+    expect(body.rows[1]).toMatchObject({ key: 'missing', error: 'not_found' });
+  });
+
   it('replicates between two HTTP databases using PouchDB replication', async () => {
     const source = remote(databaseName('source'));
     const target = remote(databaseName('target'));

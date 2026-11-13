@@ -184,6 +184,24 @@ The plugin's own **Synchronization Preset** (LiveSync settings → *Synchronizat
 
 If you prefer the event-driven style, enable **Synchronization Preset → Periodic with batch** instead and turn continuous LiveSync off; you lose real-time push, but the DO can hibernate between syncs.
 
+### “Error during vault initialisation process.” after choosing the fetch options
+
+Self-hosted LiveSync 1.0.50's **Fetch everything** (and the fast-setup fetch)
+checks the remote feature document with a `GET` request that puts the keys in
+the query string:
+
+```
+GET /vault/_all_docs?keys=["obsydian_livesync_version"]&include_docs=true
+```
+
+CouchDB accepts `keys` both as a `POST` body field and as a query parameter.
+Older builds of this server only read the body form, so the probe returned
+every document, the plugin rejected the response as invalid, and the fetch
+stopped before it changed anything. The server now accepts the query form; no
+plugin setting needs to change. If the fetch flag (`flag_fetch.md`) is still
+present afterwards, restart Obsidian and choose **Continue with these
+choices** to run it again.
+
 ### A second vault does not sync: “Remote database is locked”
 
 If a rebuild, reset or interrupted onboarding ran on one device, the plugin

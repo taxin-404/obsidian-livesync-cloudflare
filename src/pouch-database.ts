@@ -584,7 +584,7 @@ export class PouchDatabase extends DurableObject<Env> {
   private async allDocsRoute(request: Request, url: URL, db: AnyDatabase): Promise<Response> {
     const body = request.method === 'POST' ? await readJson<{ keys?: string[] }>(request) : {};
     const options = {
-      keys: body.keys,
+      keys: body.keys ?? jsonParam<string[]>(url, 'keys'),
       key: jsonParam(url, 'key'),
       startkey: jsonParam(url, 'startkey'),
       endkey: jsonParam(url, 'endkey'),
