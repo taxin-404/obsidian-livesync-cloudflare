@@ -70,17 +70,33 @@ describe('CouchDB compatibility surface', () => {
     expect(preflight.headers.get('access-control-allow-origin')).toBe('app://obsidian.md');
   });
 
-  it('serves its connection details to browsers without credentials', async () => {
-    const response = await SELF.fetch(
+  it('requires the page password before showing the setup details', async () => {
+    const form = await SELF.fetch(
       new Request('https://pouch.test/', { headers: { accept: 'text/html,application/xhtml+xml' } }),
     );
-    expect(response.status).toBe(200);
-    expect(response.headers.get('content-type')).toContain('text/html');
-    expect(response.headers.get('x-robots-tag')).toContain('noindex');
-    const html = await response.text();
-    expect(html).toContain('https://pouch.test');
-    expect(html).toContain('admin');
-    expect(html).toContain('test-password');
+    expect(form.status).toBe(200);
+    expect(form.headers.get('x-robots-tag')).toContain('noindex');
+    const formHtml = await form.text();
+    expect(formHtml).toContain('name="password"');
+    expect(formHtml).not.toContain('obsidian://setuplivesync');
+
+    const wrong = await SELF.fetch(new Request('https://pouch.test/', {
+      method: 'POST',
+      headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'password=nope',
+    }));
+    expect(wrong.status).toBe(401);
+    expect(await wrong.text()).not.toContain('obsidian://setuplivesync');
+
+    const ok = await SELF.fetch(new Request('https://pouch.test/', {
+      method: 'POST',
+      headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
+      body: 'password=test-page-password',
+    }));
+    expect(ok.status).toBe(200);
+    const html = await ok.text();
+    expect(html).toContain('obsidian://setuplivesync?settings=test');
+    expect(html).toContain('test-uri-passphrase');
   });
 
   it('supports the PouchDB HTTP document, bulk, changes, and attachment APIs', async () => {

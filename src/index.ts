@@ -27,7 +27,7 @@ export default {
       if (url.pathname === '/_up') {
         response = json({ status: 'ok' });
       } else if (isLandingRequest(request, url)) {
-        response = landingPage(request, env);
+        response = await landingPage(request, env);
       } else {
         const authFailure = await authenticate(request, env);
         if (authFailure) diagnostic({ event: 'operation_end', operation: 'auth', outcome: 'error', status: authFailure.status });

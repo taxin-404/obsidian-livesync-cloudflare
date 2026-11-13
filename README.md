@@ -125,12 +125,18 @@ On the configured device: LiveSync settings → **Remote Configuration → Copy 
 
 ### Connection details page
 
-Opening the Worker URL in a browser shows the URL, database name, username and
-password to paste into LiveSync. The page answers `GET /` for requests that ask
-for HTML, before authentication; requests from the plugin, PouchDB or curl
-(`Accept: application/json` or none) still get the authenticated CouchDB
-surface. Anyone with the page link can read those credentials, so share the
-link only with people who should have the password.
+A browser opening the Worker URL is asked for `PAGE_PASSWORD` before the page
+shows the setup URI and its passphrase (or, when those secrets are not bound,
+the URL, database, username and password). There is no session or cookie, so
+every visit asks again. If `PAGE_PASSWORD` is unset the page returns 503
+instead of exposing anything. Requests from the plugin, PouchDB or curl do not
+ask for HTML and still get the authenticated CouchDB surface.
+
+```sh
+npx wrangler secret put PAGE_PASSWORD --name <worker>
+npx wrangler secret put SETUP_URI --name <worker>
+npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>
+```
 
 ## Backups and restore
 

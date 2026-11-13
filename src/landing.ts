@@ -13,26 +13,31 @@ function escapeHtml(value: string): string {
 }
 
 export function isLandingRequest(request: Request, url: URL): boolean {
-  if (request.method !== 'GET') return false;
   if (url.pathname !== '/' && url.pathname !== '/index.html') return false;
+  if (request.method !== 'GET' && request.method !== 'POST') return false;
   return (request.headers.get('accept') ?? '').includes('text/html');
 }
 
-/**
- * Connection details for the people this deployment is shared with. Not part of
- * the CouchDB surface: browsers ask for text/html, LiveSync clients never do.
- */
-export function landingPage(request: Request, env: AppEnv): Response {
-  const origin = new URL(request.url).origin;
-  const database = escapeHtml(env.BACKUP_DATABASE || 'vault');
-  const username = escapeHtml(env.COUCHDB_USERNAME);
-  const password = escapeHtml(env.COUCHDB_PASSWORD);
-  const html = `<!doctype html>
+async function passwordMatches(submitted: string, expected: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [left, right] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(submitted)),
+    crypto.subtle.digest('SHA-256', encoder.encode(expected)),
+  ]);
+  const a = new Uint8Array(left);
+  const b = new Uint8Array(right);
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
+  return difference === 0;
+}
+
+function page(title: string, body: string): string {
+  return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>${escapeHtml(origin.replace(/^https?:\/\//, ''))}</title>
+<title>${escapeHtml(title)}</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -41,7 +46,7 @@ export function landingPage(request: Request, env: AppEnv): Response {
     background: #121212; color: #e8e8e8;
     font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { width: min(560px, 100%); }
+  main { width: min(680px, 100%); }
   h1 { margin: 0 0 4px; font-size: 20px; font-weight: 600; letter-spacing: .01em; }
   p.sub { margin: 0 0 24px; color: #8a8a8a; font-size: 13px; }
   dl { display: grid; gap: 10px; margin: 0; }
@@ -50,28 +55,76 @@ export function landingPage(request: Request, env: AppEnv): Response {
     align-items: center; padding: 12px 14px; border: 1px solid #2a2a2a;
     border-radius: 10px; background: #1a1a1a;
   }
+  .row.stack { grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .row.stack dt { grid-column: 1 / -1; margin-bottom: 8px; }
   dt { color: #8a8a8a; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
   dd {
     margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    font: 14px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
+  .row.stack dd { white-space: normal; overflow-wrap: anywhere; max-height: 7.5em; overflow-y: auto; }
   button {
     border: 1px solid #333; border-radius: 7px; background: #232323; color: #cfcfcf;
     font: inherit; font-size: 12px; padding: 6px 10px; cursor: pointer;
   }
   button:hover { background: #2b2b2b; color: #fff; }
   button:active { transform: translateY(1px); }
+  form { display: grid; gap: 12px; }
+  input[type=password] {
+    width: 100%; padding: 11px 12px; border: 1px solid #333; border-radius: 9px;
+    background: #1a1a1a; color: #e8e8e8; font: inherit;
+  }
+  input[type=password]:focus { outline: 2px solid #5b5bd6; outline-offset: 1px; border-color: #5b5bd6; }
+  form button { padding: 11px 12px; font-size: 14px; background: #5b5bd6; border-color: #5b5bd6; color: #fff; }
+  form button:hover { background: #6a6ae0; }
+  .error { margin: 0 0 12px; color: #ff8a8a; font-size: 13px; }
 </style>
-<main>
-  <h1>LiveSync</h1>
-  <p class="sub">Connection details</p>
-  <dl>
-    <div class="row"><dt>URL</dt><dd id="v-url">${escapeHtml(origin)}</dd><button data-copy="v-url">Copy</button></div>
-    <div class="row"><dt>Database</dt><dd id="v-db">${database}</dd><button data-copy="v-db">Copy</button></div>
-    <div class="row"><dt>Username</dt><dd id="v-user">${username}</dd><button data-copy="v-user">Copy</button></div>
-    <div class="row"><dt>Password</dt><dd id="v-pass">${password}</dd><button data-copy="v-pass">Copy</button></div>
-  </dl>
-</main>
+<main>${body}</main>
+</html>`;
+}
+
+function gate(origin: string, error: string): Response {
+  const html = page(
+    origin.replace(/^https?:\/\//, ''),
+    `<h1>LiveSync</h1>
+  <p class="sub">Enter the password to see the setup details.</p>
+  ${error ? `<p class="error">${escapeHtml(error)}</p>` : ''}
+  <form method="post" action="/">
+    <input type="password" name="password" placeholder="Password" autocomplete="current-password" autofocus required>
+    <button type="submit">Continue</button>
+  </form>`,
+  );
+  return new Response(html, {
+    status: error ? 401 : 200,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store',
+      'x-robots-tag': 'noindex, nofollow',
+      'referrer-policy': 'no-referrer',
+    },
+  });
+}
+
+function row(id: string, label: string, value: string, stacked = false): string {
+  return `<div class="row${stacked ? ' stack' : ''}"><dt>${label}</dt><dd id="${id}">${escapeHtml(value)}</dd><button data-copy="${id}">Copy</button></div>`;
+}
+
+function setup(origin: string, env: AppEnv): Response {
+  const setupUri = env.SETUP_URI;
+  const setupPassphrase = env.SETUP_URI_PASSPHRASE;
+  const rows = setupUri && setupPassphrase
+    ? row('v-uri', 'Setup URI', setupUri, true) + row('v-pass', 'Passphrase', setupPassphrase)
+    : [
+        row('v-url', 'URL', origin, true),
+        row('v-db', 'Database', env.BACKUP_DATABASE || 'vault'),
+        row('v-user', 'Username', env.COUCHDB_USERNAME),
+        row('v-pass', 'Password', env.COUCHDB_PASSWORD),
+      ].join('');
+  const html = page(
+    origin.replace(/^https?:\/\//, ''),
+    `<h1>LiveSync</h1>
+  <p class="sub">Setup</p>
+  <dl>${rows}</dl>
 <script>
   document.addEventListener('click', (event) => {
     const button = event.target.closest('[data-copy]');
@@ -80,8 +133,8 @@ export function landingPage(request: Request, env: AppEnv): Response {
     const done = () => { button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1200); };
     if (navigator.clipboard) navigator.clipboard.writeText(value).then(done, () => {});
   });
-</script>
-</html>`;
+</script>`,
+  );
   return new Response(html, {
     headers: {
       'content-type': 'text/html; charset=utf-8',
@@ -90,4 +143,24 @@ export function landingPage(request: Request, env: AppEnv): Response {
       'referrer-policy': 'no-referrer',
     },
   });
+}
+
+/**
+ * Connection material for the people this deployment is shared with. Not part of
+ * the CouchDB surface: browsers ask for text/html, LiveSync clients never do.
+ *
+ * The setup details are never served without PAGE_PASSWORD; there is no session
+ * or cookie, so every visit has to enter it again. If PAGE_PASSWORD is not
+ * configured the page fails closed instead of exposing the setup material.
+ */
+export async function landingPage(request: Request, env: AppEnv): Promise<Response> {
+  const origin = new URL(request.url).origin;
+  const expected = env.PAGE_PASSWORD;
+  if (!expected) {
+    return new Response('Not configured.', { status: 503, headers: { 'cache-control': 'no-store' } });
+  }
+  if (request.method === 'GET') return gate(origin, '');
+  const submitted = new URLSearchParams(await request.text()).get('password') ?? '';
+  if (!(await passwordMatches(submitted, expected))) return gate(origin, 'Wrong password.');
+  return setup(origin, env);
 }

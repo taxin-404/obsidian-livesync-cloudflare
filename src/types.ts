@@ -1,6 +1,11 @@
 export type JsonObject = Record<string, unknown>;
 
-export type AppEnv = Env & { COUCHDB_PASSWORD: string };
+export type AppEnv = Env & {
+  COUCHDB_PASSWORD: string;
+  PAGE_PASSWORD?: string;
+  SETUP_URI?: string;
+  SETUP_URI_PASSPHRASE?: string;
+};
 
 export interface CouchErrorBody {
   error: string;
