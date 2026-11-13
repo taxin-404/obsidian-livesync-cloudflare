@@ -7,8 +7,12 @@ import {
   encryptValue,
   formatRemote,
   isEncryptedBlob,
+  buildProfile,
+  decodeSetupUri,
+  encodeSetupUri,
   parseRemote,
   readVault,
+  SETUP_URI_PREFIX,
   writeVault,
   DEFAULT_CONFIG_PASSPHRASE,
   ENCRYPTED_PREFIX,
@@ -101,4 +105,64 @@ test('refuses a vault with no active remote configuration', async () => {
   data.activeConfigurationId = 'remote-missing';
   await writeFile(vault.dataPath, `${JSON.stringify(data, null, 2)}\n`);
   await assert.rejects(() => readVault(vault.vaultDir), /no active remote configuration/);
+});
+
+test('encodes and decodes a setup uri', async () => {
+  const settings = { couchDB_PASSWORD: 'p@ss', remoteConfigurations: { 'remote-x': { id: 'remote-x', name: 'n', uri: 'sls+https://admin:p@ss@h/?db=vault', isEncrypted: false } } };
+  const uri = await encodeSetupUri(settings, 'uri-pass');
+  assert.ok(uri.startsWith(SETUP_URI_PREFIX));
+  assert.deepEqual(await decodeSetupUri(uri, 'uri-pass'), settings);
+  await assert.rejects(() => decodeSetupUri('obsidian://open?vault=notes', 'uri-pass'), /not a setup URI/);
+  await assert.rejects(() => decodeSetupUri(uri, 'wrong-pass'));
+});
+
+test('buildProfile keeps the device profile and swaps only the authoritative facts', async () => {
+  const profile = {
+    couchDB_URI: 'https://old.example', couchDB_USER: 'admin', couchDB_PASSWORD: 'old', couchDB_DBNAME: 'vault',
+    encrypt: true, usePathObfuscation: true, encryptInternalMetadata: true,
+    passphrase: 'stale', idDerivationVersion: 1, idDerivationKey: 'stale',
+    configPassphraseStore: '', encryptedPassphrase: '', encryptedCouchDBConnection: '',
+    pluginSyncExtendedSetting: {}, P2P_managedType: 'x',
+    remoteConfigurations: { 'remote-old': { id: 'remote-old', name: 'old', uri: 'sls+https://admin:old@old.example/?db=vault', isEncrypted: true } },
+  };
+  const built = await buildProfile({
+    profile,
+    remote: { user: 'admin', password: 'new', host: 'live.example', pathname: '/', search: '?db=vault' },
+    password: 'new',
+    e2eePassphrase: 'e'.repeat(64),
+    idDerivationKey: 'k'.repeat(64),
+    idDerivationVersion: 1,
+    setupPassphrase: 'uri-pass',
+  });
+  const settings = built.settings;
+  assert.equal(settings.couchDB_PASSWORD, 'new');
+  assert.equal(settings.couchDB_URI, 'https://live.example');
+  assert.equal(settings.couchDB_USER, 'admin');
+  assert.equal(settings.couchDB_DBNAME, 'vault');
+  assert.equal(settings.passphrase, 'e'.repeat(64));
+  assert.equal(settings.idDerivationKey, 'k'.repeat(64));
+  assert.equal(settings.idDerivationVersion, 1);
+  assert.equal(settings.encrypt, true);
+  assert.equal(settings.usePathObfuscation, true);
+  assert.equal(settings.configPassphraseStore, '');
+  assert.equal(settings.encryptedCouchDBConnection, '');
+  assert.equal(settings.encryptedPassphrase, '');
+  assert.equal('P2P_managedType' in settings, false);
+  assert.equal('pluginSyncExtendedSetting' in settings, false);
+  assert.equal(Object.keys(settings.remoteConfigurations).length, 1);
+  const [remote] = Object.values(settings.remoteConfigurations);
+  assert.match(remote.id, /^remote-[0-9a-z]{8}-[0-9a-z]{6}$/);
+  assert.equal(remote.isEncrypted, false);
+  assert.equal(remote.uri, 'sls+https://admin:new@live.example/?db=vault');
+  assert.deepEqual(await decodeSetupUri(built.uri, 'uri-pass'), settings);
+  assert.equal(profile.couchDB_PASSWORD, 'old', 'the caller profile is not mutated');
+  assert.equal(Object.keys(profile.remoteConfigurations).length, 1, 'the caller profile is not mutated');
+});
+
+test('buildProfile does not add desktop-only keys', async () => {
+  const built = await buildProfile({ profile: { remoteConfigurations: {} }, remote: { user: 'admin', password: 'n', host: 'h', pathname: '/', search: '' }, password: 'n', e2eePassphrase: 'e', idDerivationKey: 'k', idDerivationVersion: 1, setupPassphrase: 'p' });
+  for (const key of ['additionalSuffixOfDatabaseName', 'syncInternalFiles', 'syncInternalFilesTargetPatterns', 'deviceAndVaultName', 'pluginSyncExtendedSetting']) {
+    assert.equal(key in built.settings, false, key);
+  }
+  assert.equal(built.settings.couchDB_URI, 'https://h');
 });

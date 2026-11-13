@@ -139,3 +139,72 @@ export async function writeVault(vaultDir, data) {
   await writeFile(temporary, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
   await rename(temporary, dataPath);
 }
+
+const REMOTE_ID_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
+
+function randomRemoteIdPart(length, random) {
+  let out = '';
+  while (out.length < length) {
+    for (const byte of random(length * 2)) {
+      // 36 * 7 = 252: values above that would bias the alphabet.
+      if (byte < 252) out += REMOTE_ID_ALPHABET[byte % REMOTE_ID_ALPHABET.length];
+      if (out.length === length) break;
+    }
+  }
+  return out;
+}
+
+export function generateRemoteId(options = {}) {
+  const random = options.random ?? randomBytes;
+  return `remote-${randomRemoteIdPart(8, random)}-${randomRemoteIdPart(6, random)}`;
+}
+
+export async function encodeSetupUri(settings, setupPassphrase, options = {}) {
+  const blob = await encryptValue(JSON.stringify(settings), setupPassphrase, options);
+  return `${SETUP_URI_PREFIX}${encodeURIComponent(blob)}`;
+}
+
+export async function decodeSetupUri(uri, setupPassphrase) {
+  if (typeof uri !== 'string' || !uri.startsWith(SETUP_URI_PREFIX)) throw new Error('not a setup URI');
+  const blob = decodeURIComponent(uri.slice(SETUP_URI_PREFIX.length));
+  return JSON.parse(await decryptValue(blob, setupPassphrase));
+}
+
+/**
+ * Turns the live new-device profile into the profile a rotated deployment
+ * should serve. Device-level keys are kept exactly as they are; only the facts
+ * the server owns are replaced.
+ */
+export async function buildProfile(options) {
+  const settings = structuredClone(options.profile ?? {});
+  for (const key of ['P2P_managedType', 'P2P_managedId', 'P2P_managedToken', 'pluginSyncExtendedSetting']) {
+    delete settings[key];
+  }
+  settings.couchDB_URI = `https://${options.remote.host}`;
+  settings.couchDB_USER = options.remote.user;
+  settings.couchDB_PASSWORD = options.password;
+  settings.couchDB_DBNAME = remoteDatabaseName(options.remote, settings.couchDB_DBNAME);
+  settings.passphrase = options.e2eePassphrase;
+  settings.idDerivationKey = options.idDerivationKey;
+  settings.idDerivationVersion = options.idDerivationVersion;
+  settings.configPassphraseStore = '';
+  settings.encryptedPassphrase = '';
+  settings.encryptedCouchDBConnection = '';
+  settings.remoteConfigurations = (() => {
+    const id = options.remoteId ?? generateRemoteId(options);
+    return {
+      [id]: {
+        id,
+        name: options.remote.name ?? `CouchDB ${options.remote.host}`,
+        uri: formatRemote({ ...options.remote, password: options.password }),
+        isEncrypted: false,
+      },
+    };
+  })();
+  return { settings, uri: await encodeSetupUri(settings, options.setupPassphrase, options) };
+}
+
+function remoteDatabaseName(remote, fallback) {
+  const database = new URLSearchParams(remote.search ?? '').get('db');
+  return database || fallback || 'vault';
+}
