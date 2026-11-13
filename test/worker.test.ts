@@ -383,3 +383,26 @@ describe('replication and maintenance regressions', () => {
     await db.close();
   });
 });
+
+describe('health endpoint', () => {
+  it('reports liveness and the age of the newest backup without credentials', async () => {
+    const listing = await env.BACKUP_BUCKET.list({ prefix: 'backups/' });
+    if (listing.objects.length) await env.BACKUP_BUCKET.delete(listing.objects.map((object) => object.key));
+
+    const empty = await (await SELF.fetch('https://pouch.test/_up')).json() as {
+      status: string; backup: { lastSuccess: string | null; ageHours: number | null; overdue: boolean };
+    };
+    expect(empty).toMatchObject({ status: 'ok', backup: { lastSuccess: null, ageHours: null, overdue: true } });
+
+    expect((await couchFetch('/vault', { method: 'PUT' })).status).toBe(201);
+    expect((await couchFetch('/_backup', { method: 'POST' })).status).toBe(200);
+
+    const healthy = await (await SELF.fetch('https://pouch.test/_up')).json() as {
+      status: string; backup: { lastSuccess: string | null; ageHours: number | null; overdue: boolean };
+    };
+    expect(healthy.status).toBe('ok');
+    expect(healthy.backup.overdue).toBe(false);
+    expect(typeof healthy.backup.lastSuccess).toBe('string');
+    expect(healthy.backup.ageHours).toBeLessThan(1);
+  });
+});

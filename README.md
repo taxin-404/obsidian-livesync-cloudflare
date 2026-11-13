@@ -149,6 +149,15 @@ npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>
   curl -u admin:PASSWORD https://<worker>/_backup/status
   ```
 - Restore: see [`docs/backup-recovery.md`](docs/backup-recovery.md) (`POST /_backup/restore`).
+- Health: `GET /_up` needs no credentials and includes the newest backup's age:
+  ```sh
+  curl -s https://<worker>/_up
+  # {"status":"ok","backup":{"lastSuccess":"2026-11-13T08:45:49.884Z","ageHours":0.2,"overdue":false}}
+  ```
+  `overdue` turns true when the newest completed backup is more than 26 hours old.
+  The check reads R2 only, so polling it does not wake an idle Durable Object.
+  `GET /_backup/status` (authenticated) additionally shows the last attempt and
+  any error message.
 
 If you prefer a real cron trigger (for example on a dedicated account with free slots), add it back in `wrangler.jsonc`:
 ```jsonc
@@ -165,7 +174,7 @@ Both paths are idempotent.
 | R2 | 10 GB-month | gzipped JSONL table exports; small |
 | Cron triggers | 5/account | none used (alarm instead) |
 
-One vault per account is the safe assumption. If sync starts failing at the quota, switch clients to **Periodic and Events → 60 s**, which lets the Durable Object hibernate.
+Every client that uses the same URL and database name shares one Durable Object, so extra devices or extra vaults add requests, not a second duration charge. The duration figure above is for that single object being kept hot by continuous LiveSync. If it approaches the allowance, switch clients to **Periodic and Events → 60 s**, which lets the Durable Object hibernate.
 
 ## Troubleshooting
 

@@ -25,6 +25,29 @@ export async function listBackups(bucket: R2Bucket, database: string): Promise<M
   } while (cursor);
   return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+/**
+ * Newest completed backup, for health checks. Reads one manifest instead of
+ * every manifest like listBackups does, so it stays cheap when polled.
+ */
+export async function latestBackup(bucket: R2Bucket, database: string): Promise<Manifest | null> {
+  const ids: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await bucket.list({ prefix: prefix(database), delimiter: '/', cursor });
+    for (const path of page.delimitedPrefixes) ids.push(path.slice(prefix(database).length, -1));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  // Newest id first. A backup in progress has a directory but no manifest yet,
+  // so skip 404s instead of reporting a failure while one is being written.
+  for (const id of ids.sort().reverse()) {
+    try {
+      return await readManifest(bucket, database, id);
+    } catch (error) {
+      if ((error as { status?: number }).status !== 404) throw error;
+    }
+  }
+  return null;
+}
 export async function exportTables(sql: SqlStorage, bucket: R2Bucket, database: string, check: () => void): Promise<Manifest> {
   const start = Date.now();
   const m: Manifest = { format: 2, id: `${start}-${crypto.randomUUID()}`, database, createdAt: new Date(start).toISOString(),

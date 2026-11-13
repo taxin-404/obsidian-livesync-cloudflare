@@ -3,7 +3,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject, evictDurableObject } from 'cloudflare:test';
 import { describe, it, expect } from 'vitest';
 import worker, { PouchDatabase } from '../src/index';
-import { listBackups, verifyBackup, directory } from '../src/backup/storage';
+import { listBackups, verifyBackup, directory, latestBackup, prefix } from '../src/backup/storage';
 import { expectCounts } from './backup-helpers';
 import { TABLES, pack, unpack, hash } from '../src/backup/format';
 import fixture from './fixtures/livesync-1.0.21.json';
@@ -385,5 +385,19 @@ describe('database backups', () => {
     for (const path of ['/_backup', '/_backup/status', '/_backup/restore']) {
       expect((await worker.fetch(new Request(`https://local${path}`), env)).status).toBe(401);
     }
+  });
+});
+
+describe('backup health', () => {
+  it('ignores a backup directory that has no manifest yet', async () => {
+    const source = await seed();
+    const backup = await source.createBackup('vault');
+    if (!('id' in backup)) throw new Error('Expected backup');
+    // A backup in progress writes parts before the manifest; the newest id must
+    // not make the health check report a failure.
+    const inProgress = `9999999999999-${crypto.randomUUID()}`;
+    await env.BACKUP_BUCKET.put(`${prefix('vault')}${inProgress}/000000.jsonl.gz`, 'partial');
+    expect(await latestBackup(env.BACKUP_BUCKET, 'vault')).toMatchObject({ id: backup.id, database: 'vault' });
+    await env.BACKUP_BUCKET.delete(`${prefix('vault')}${inProgress}/000000.jsonl.gz`);
   });
 });

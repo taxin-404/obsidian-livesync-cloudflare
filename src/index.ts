@@ -1,5 +1,6 @@
 import { diagnostic } from './diagnostics';
 import { backupRoute } from './backup/routes';
+import { latestBackup } from './backup/storage';
 import { authenticate } from './auth';
 import { couchError, json, readJson } from './http';
 import { isLandingRequest, landingPage } from './landing';
@@ -26,7 +27,7 @@ export default {
     try {
       const url = new URL(request.url);
       if (url.pathname === '/_up') {
-        response = json({ status: 'ok' });
+        response = json(await health(env));
       } else if (isLandingRequest(request, url)) {
         response = await landingPage(request, env);
       } else {
@@ -41,6 +42,22 @@ export default {
     return withCors(response, env, origin);
   },
 } satisfies ExportedHandler<Env>;
+
+/**
+ * Cheap liveness plus the age of the newest backup. Reading R2 rather than the
+ * Durable Object keeps a monitoring ping from waking an idle database.
+ */
+async function health(env: AppEnv): Promise<Record<string, unknown>> {
+  if (env.BACKUP_ENABLED !== 'true') return { status: 'ok' };
+  try {
+    const latest = await latestBackup(env.BACKUP_BUCKET, env.BACKUP_DATABASE);
+    const lastSuccess = latest?.createdAt ?? null;
+    const ageHours = lastSuccess === null ? null : Math.round(((Date.now() - Date.parse(lastSuccess)) / 3_600_000) * 10) / 10;
+    return { status: 'ok', backup: { lastSuccess, ageHours, overdue: ageHours === null || ageHours > 26 } };
+  } catch {
+    return { status: 'ok', backup: { lastSuccess: null, ageHours: null, overdue: true, error: 'unavailable' } };
+  }
+}
 
 async function routeAuthenticated(request: Request, url: URL, env: AppEnv): Promise<Response> {
   if (url.pathname === '/_backup' || url.pathname.startsWith('/_backup/')) return backupRoute(request, env);
