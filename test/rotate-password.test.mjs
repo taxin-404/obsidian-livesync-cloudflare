@@ -23,17 +23,25 @@ async function deployment(vault, overrides = {}) {
     'old-uri-pass',
   );
   let servedPassphrase = 'old-uri-pass';
+  let passphraseLag = 0;
   let gatePassword = vault.password;
 
   const putSecret = async (name, value) => {
     if (overrides.failOn === name) throw new Error('boom');
     calls.push([name, value]);
     if (name === 'SETUP_URI') servedUri = value;
-    if (name === 'SETUP_URI_PASSPHRASE') servedPassphrase = value;
+    if (name === 'SETUP_URI_PASSPHRASE') {
+      servedPassphrase = value;
+      passphraseLag = overrides.passphraseLag ?? 0;
+    }
     if (name === 'COUCHDB_PASSWORD') gatePassword = value;
   };
-  const fetchPage = async (candidate) =>
-    candidate === gatePassword ? pageHtml(servedUri, servedPassphrase) : '<html>sign in</html>';
+  const fetchPage = async (candidate) => {
+    if (candidate !== gatePassword) return '<html>sign in</html>';
+    const passphrase = passphraseLag > 0 ? 'old-uri-pass' : servedPassphrase;
+    if (passphraseLag > 0) passphraseLag--;
+    return pageHtml(servedUri, passphrase);
+  };
   const fetchAuth = overrides.fetchAuth ?? (async (candidate) => (candidate === gatePassword ? 200 : 401));
 
   return { calls, putSecret, fetchPage, fetchAuth };
@@ -90,7 +98,7 @@ test('restores the already-pushed secrets and discards the staged files when the
   const fake = await deployment(vault, { failOn: 'COUCHDB_PASSWORD' });
   const before = await snapshot(vault);
 
-  await assert.rejects(() => rotate({ ...vault, ...fake }), /failed to push COUCHDB_PASSWORD: boom.*restored/s);
+  await assert.rejects(() => rotate({ ...vault, ...fake }), /failed to push COUCHDB_PASSWORD: boom.*re-pushed/s);
 
   assert.deepEqual(fake.calls.map(([name]) => name), [
     'SETUP_URI',
@@ -161,7 +169,7 @@ test('rolls back and keeps local files when the old password still authenticates
   const before = await snapshot(vault);
   await assert.rejects(
     () => rotate({ ...vault, ...fake, verifyAttempts: 1, verifyDelayMs: 0 }),
-    /old password still authenticates.*restored/s,
+    /old password still authenticates.*re-pushed/s,
   );
   assert.deepEqual(fake.calls.map(([name]) => name), [
     'SETUP_URI',
@@ -172,6 +180,15 @@ test('rolls back and keeps local files when the old password still authenticates
     'SETUP_URI',
   ]);
   assert.deepEqual(await snapshot(vault), before);
+});
+
+test('retries the page check while the setup passphrase propagates', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault, { passphraseLag: 1 });
+  const sleeps = [];
+  const result = await rotate({ ...vault, ...fake, verifyDelayMs: 1, sleep: async (ms) => sleeps.push(ms) });
+  assert.deepEqual(sleeps, [1], 'one page check saw the new URI with the old passphrase');
+  assert.equal((await readVault(vault.vaultDir)).remote.password, result.password);
 });
 
 test('retries verification while the old password is still accepted', async () => {

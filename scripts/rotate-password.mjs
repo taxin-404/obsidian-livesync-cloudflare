@@ -148,25 +148,16 @@ function buildSteps({ state, passwordFile, dryRun }) {
   return lines;
 }
 
-async function verifyPage({ fetchPage, password, setupUri, setupPassphrase, newPassword }) {
-  const { uri, passphrase } = readSetupPage(await fetchPage(password));
-  if (uri !== setupUri) throw new Error('the gate page did not serve the rotated setup URI');
-  if (passphrase !== setupPassphrase) throw new Error('the gate page did not serve the rotated setup passphrase');
-  const served = await decodeSetupUri(uri, passphrase);
-  if (served.couchDB_PASSWORD !== newPassword) throw new Error('the served setup URI does not carry the new password');
-}
-
 /**
- * Waits for the whole deployment to agree on the new password. Each attempt
- * checks the new password, the old password and the served page, so a retry
- * never accepts a mix of old and new isolates.
+ * Runs a check until it agrees or the attempts run out. Secret updates reach
+ * isolates at slightly different moments, so one mismatched page is not proof
+ * that the rotation failed.
  */
-async function verifyNewPassword(options) {
-  const { attempts = VERIFY_ATTEMPTS, delayMs = VERIFY_DELAY_MS, sleep = defaultSleep } = options;
+async function retryCheck(check, { attempts = VERIFY_ATTEMPTS, delayMs = VERIFY_DELAY_MS, sleep = defaultSleep } = {}) {
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await verifyPasswordOnce(options);
+      await check();
       return;
     } catch (error) {
       lastError = error;
@@ -174,6 +165,27 @@ async function verifyNewPassword(options) {
     }
   }
   throw new Error(`${lastError.message} (checked ${attempts} times)`);
+}
+
+async function verifyPageOnce({ fetchPage, password, setupUri, setupPassphrase, newPassword }) {
+  const { uri, passphrase } = readSetupPage(await fetchPage(password));
+  if (uri !== setupUri) throw new Error('the gate page did not serve the rotated setup URI');
+  if (passphrase !== setupPassphrase) throw new Error('the gate page did not serve the rotated setup passphrase');
+  const served = await decodeSetupUri(uri, passphrase);
+  if (served.couchDB_PASSWORD !== newPassword) throw new Error('the served setup URI does not carry the new password');
+}
+
+function verifyPage(options) {
+  return retryCheck(() => verifyPageOnce(options), options);
+}
+
+/**
+ * Waits for the whole deployment to agree on the new password. Each attempt
+ * checks the new password, the old password and the served page, so a retry
+ * never accepts a mix of old and new isolates.
+ */
+function verifyNewPassword(options) {
+  return retryCheck(() => verifyPasswordOnce(options), options);
 }
 
 async function verifyPasswordOnce({ fetchAuth, fetchPage, previousPassword, password, setupUri, setupPassphrase }) {
@@ -200,9 +212,9 @@ async function rollBack({ putSecret, pushed, previous, passwordFile }) {
     }
   }
   if (failures.length === 0) {
-    return ' — the old secrets were restored and no local file was touched; fix the cause and re-run';
+    return ' — the old secrets were re-pushed and no local file was touched; fix the cause, confirm with npm run check:secrets -- --vault <path>, then re-run';
   }
-  return ` — restoring ${failures.join(', ')} failed. The server may now require the new password while ${passwordFile} and the vault hold the old one; restore COUCHDB_PASSWORD, SETUP_URI and SETUP_URI_PASSPHRASE in the Cloudflare dashboard, then re-run.`;
+  return ` — restoring ${failures.join(', ')} failed. The server may now require the new password while ${passwordFile} and the vault hold the old one; restore COUCHDB_PASSWORD, SETUP_URI and SETUP_URI_PASSPHRASE in the Cloudflare dashboard, confirm with npm run check:secrets, then re-run.`;
 }
 
 /**
@@ -303,6 +315,9 @@ export async function rotate(options) {
       setupUri: built.uri,
       setupPassphrase,
       newPassword: password,
+      attempts: verifyAttempts,
+      delayMs: verifyDelayMs,
+      sleep,
     });
     const stillWorks = await fetchAuth(previousPassword);
     if (stillWorks !== 200) {
