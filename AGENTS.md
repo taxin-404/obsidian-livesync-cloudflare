@@ -8,8 +8,12 @@ This npm workspace provides a CouchDB-compatible Cloudflare Worker backed by Pou
 - `apps/cloudflare-obsidian-mcp/`: MCP Worker source, OAuth integration, configuration, and tests.
 - `packages/livesync-contracts/`: shared storage/MCP contracts.
 - `test/`: storage integration tests, fixtures, and script tests.
-- `scripts/`: backup, diagnostics, dependency checks, and staging utilities.
+- `scripts/`: backup, diagnostics, dependency checks, staging utilities, and `upstream-sync.mjs`.
 - `docs/`, `COMPATIBILITY.md`, and `DEPLOY.md`: architecture constraints, operational procedures, and deployment guidance.
+
+## Upstream
+
+This repository is a snapshot of `robince/cloudflare-obsidian-livesync-mcp` at the commit pinned in `upstream.json`, not a git fork with shared history. Never `git merge upstream/main`. Port upstream changes with `npm run upstream:check` → `upstream:diff` / `upstream:apply` → test → `upstream:accept -- --yes`, following `docs/upstream-sync.md`. Only the storage Worker is deployed, so changes under `apps/cloudflare-obsidian-mcp/` are optional.
 
 ## Build, Test, and Development Commands
 
@@ -21,7 +25,8 @@ Use Node.js `^22.18.0 || >=24.11.0` and the root npm lockfile.
 - `npm run types:check`: verify generated declarations are current.
 - `npm run check`: check production dependencies and TypeScript across workspaces.
 - `npm test`: run the primary storage and integration suites.
-- `npm run test:all`: include workspace, staging-configuration, and diagnostics tests.
+- `npm run test:all`: include workspace, staging-configuration, diagnostics, deploy and upstream-tool tests.
+- `npm run upstream:check`: list upstream commits and files since the pin in `upstream.json`.
 - `npm run dry-run`: bundle both Workers without deploying.
 
 ## Coding Style & Naming Conventions

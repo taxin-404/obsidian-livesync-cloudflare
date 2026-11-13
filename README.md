@@ -18,6 +18,7 @@ Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince
 | GitHub Actions CI | Type-check and storage tests on every push and pull request; never deploys. |
 | Durable Object alarm for backups | Works even when the account's five free cron slots are full. The alarm calls the same `createBackup(..., true)` path as the cron handler (skips before 03:00 UTC and after the day's first success, so failures retry hourly). |
 | `scripts/generate-setup-uri.sh` | Produces the `obsidian://setuplivesync?...` URI needed by the plugin's onboarding wizard. |
+| `scripts/upstream-sync.mjs` + `upstream.json` | Shows what changed upstream since the pinned snapshot and ports single files. See [docs/upstream-sync.md](docs/upstream-sync.md). |
 | `wrangler.jsonc` with `crons: []` | The alarm replaces the cron trigger; add a cron only if you prefer it. |
 
 ## How it works
@@ -172,13 +173,27 @@ Changing `BACKUP_ENABLED` to `"false"` and redeploying with the deploy script re
 
 ## Updating from upstream
 
+This repository is a snapshot of
+[`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince/cloudflare-obsidian-livesync-mcp)
+at `a14fc4b` plus local changes, so there is no shared git history to merge. A
+pin in `upstream.json` records what we already have, and a script shows what is
+new:
+
 ```sh
-git remote add upstream https://github.com/robince/cloudflare-obsidian-livesync-mcp.git
-git fetch upstream
-git merge upstream/main
+npm run upstream:check                 # commits and files changed upstream
+npm run upstream:diff  -- src/foo.ts   # the upstream patch for one file
+npm run upstream:apply -- src/foo.ts   # apply it if we have not edited that file
+npm run upstream:accept -- --yes       # move the pin after porting and testing
 ```
 
-Local changes are limited to `src/pouch-database.ts` (alarm), `wrangler.jsonc` (no cron), workflows, and the setup URI script.
+Files we have also changed are marked *port by hand*; MCP-only files
+(`apps/cloudflare-obsidian-mcp/`) are marked as safe to skip for this
+storage-only deployment. Full workflow and decision table:
+**[docs/upstream-sync.md](docs/upstream-sync.md)**.
+
+Local changes are limited to `src/pouch-database.ts` (alarm), `wrangler.jsonc`
+(no cron), the workflows, `.nvmrc`, the setup URI script, and the deployment
+docs.
 
 ## Security
 
