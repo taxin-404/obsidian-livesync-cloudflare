@@ -95,7 +95,8 @@ the current runtime allowlist.
 
 Wrangler automatically creates and binds the `OAUTH_KV` namespace on the first
 deployment. The Worker also needs the cross-script `POUCH_DATABASES` Durable
-Object binding targeting the matching `live` Worker (or the configured dev storage name).
+Object binding targeting your storage Worker (the name you chose; the file ships
+with the placeholder `your-worker-name`) — or the configured dev storage name.
 
 For a workers.dev deployment, reuse the account subdomain from the existing
 storage URL: `https://obsidian-mcp.<account-subdomain>.workers.dev`.

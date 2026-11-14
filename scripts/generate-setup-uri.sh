@@ -69,6 +69,6 @@ fi
 printf 'Paste the URI into LiveSync -> Connect with Setup URI.\n'
 printf 'Copy it with: sed -n "s/^uri=//p" .setup-uri | wl-copy   # or xclip\n\n'
 printf 'Optional: show the URI on the connection page instead of raw fields.\n'
-printf 'Substitute your Worker name for <worker> (the default is live):\n'
+printf 'Substitute your Worker name for <worker> (there is no default - use the name you chose):\n'
 printf '  sed -n "s/^uri=//p" .setup-uri | npx wrangler secret put SETUP_URI --name <worker>\n'
 printf '  sed -n "s/^uri_passphrase=//p" .setup-uri | npx wrangler secret put SETUP_URI_PASSPHRASE --name <worker>\n'

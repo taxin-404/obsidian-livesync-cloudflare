@@ -63,7 +63,7 @@ On Cloudflare's setup page:
 
    | Setting | What to enter |
    | --- | --- |
-   | Worker name | `live`, or your own name |
+   | Worker name | **Any name you like** (e.g. `live`, `my-vault-sync`); you enter it here |
    | `COUCHDB_PASSWORD` | A strong, unique password; save it for LiveSync |
    | `COUCHDB_USERNAME` | `admin`, or your preferred username |
    | `CORS_ORIGINS` | Keep the default for Obsidian desktop and mobile |
@@ -182,9 +182,10 @@ to make a Git-based build work.
 
 ## Default and development deployments
 
-The default Workers are `live` and `obsidian-mcp`, with no production
-suffix. Each configuration also defines an optional `env.dev` for
-`live-dev` and `obsidian-mcp-dev`. One checkout supports both.
+The storage Worker ships with the placeholder name `your-worker-name`, which you
+replace with the name you choose; the MCP Worker is `obsidian-mcp`. Each
+configuration also defines an optional `env.dev` (`your-worker-name-dev` and
+`obsidian-mcp-dev`). One checkout supports both.
 
 | Command | Target |
 | --- | --- |

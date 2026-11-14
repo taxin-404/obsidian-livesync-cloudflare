@@ -55,7 +55,7 @@ This repository is a snapshot of
 | Staging, E2E, or MCP tooling (`scripts/staging/`, `test/live`, MCP OAuth test config) | **Skip** unless the user asks for it. |
 | New Cloudflare binding, cron, queue, container, or paid feature | **Reject by default** — the account keeps this on the free tier with no free cron slots; alarms replace cron. Say what it would cost. |
 | Upstream deploy scripts that assume a `CLOUDFLARE_API_TOKEN` | **Skip** — this clone deploys through Workers Builds. |
-| README/docs describing upstream's own deployment | **Skip or adapt**; our docs describe `live`. |
+| README/docs describing upstream's own deployment | **Skip or adapt**; our docs use a placeholder Worker name (`your-worker-name`). |
 
 Local differences to preserve when porting: the alarm backup patch in
 `src/pouch-database.ts`, `wrangler.jsonc` (`name`, `crons: []`, R2 bucket,

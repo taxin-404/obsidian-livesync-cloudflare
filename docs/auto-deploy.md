@@ -5,7 +5,7 @@ Cloudflare API token** to create: Cloudflare's own GitHub app is the credential,
 and Workers Builds generates and stores its own deploy token.
 
 This is the same mechanism used by the other Workers on this account
-(`terabox-webdav-worker`), just attached to the existing `live` Worker
+(`terabox-webdav-worker`), just attached to your existing storage Worker
 so its URL and database survive.
 
 ## How it works
@@ -21,7 +21,7 @@ Cloudflare Workers Builds
                               checks R2 and adjusts backups)
         │
         ▼
-Worker live  +  Durable Object  +  R2 binding
+Worker your-worker-name  +  Durable Object  +  R2 binding
 ```
 
 The deploy command wraps `wrangler deploy` and also checks whether the account
@@ -38,12 +38,13 @@ deploy without backups, add `--require-r2`. See
 
 ## Prerequisites
 
-- The Worker already exists in the account (`live`), or you are happy
+- The Worker already exists in the account (the name you chose), or you are happy
   to create one with the repository.
 - The Cloudflare GitHub app can see the repository. For a private repo, grant it
   access during the connect flow (GitHub → Settings → Applications →
   Cloudflare Workers → Configure → Repository access).
-- `wrangler.jsonc` is at the repository root and its `"name"` is `live`.
+- `wrangler.jsonc` is at the repository root and its `"name"` is the Worker name
+  you chose (the file ships with the placeholder `your-worker-name`).
 
 ### The name must match
 
@@ -52,8 +53,8 @@ Wrangler configuration. Ours does:
 
 | Where | Value |
 | --- | --- |
-| Dashboard Worker | `live` |
-| `wrangler.jsonc` | `"name": "live"` |
+| Dashboard Worker | the name you chose |
+| `wrangler.jsonc` | `"name": "<the same name>"` |
 
 If you rename either one, the build fails with:
 
@@ -63,10 +64,10 @@ If you rename either one, the build fails with:
 
 ## Connect the existing Worker
 
-Do this in the dashboard for `live` — **do not create a second Worker**,
+Do this in the dashboard for your storage Worker — **do not create a second Worker**,
 or you will start with an empty database and a different URL.
 
-1. Open <https://dash.cloudflare.com> → **Workers & Pages** → **live**.
+1. Open <https://dash.cloudflare.com> → **Workers & Pages** → your storage Worker.
 2. **Settings → Builds → Connect**.
 3. Choose **GitHub**, authorise/refresh the app if asked, and select
    `taxin-404/obsidian-livesync-cloudflare`.
@@ -118,7 +119,7 @@ one entry, `COUCHDB_PASSWORD` (type: Secret). Everything else is either in
 | --- | --- | --- |
 | `COUCHDB_PASSWORD` | the password your Obsidian devices use | Worker → **Settings → Variables and secrets** → add as **Secret** |
 
-That is the complete list of dashboard entries. The existing `live`
+That is the complete list of dashboard entries. Your existing storage Worker
 Worker already has it, so connecting Workers Builds requires **no new secret at
 all**. If you are creating a fresh Worker, add it once before the first sync.
 
@@ -177,9 +178,9 @@ COUCHDB_PASSWORD=...
 ### The `dev` environment
 
 `wrangler.jsonc` also defines an optional `dev` environment that deploys a
-separate Worker named `live-dev`. It has its own database and needs its
-own `COUCHDB_PASSWORD`; it is not used by Workers Builds, which targets the
-top-level `live` Worker.
+separate Worker named `your-worker-name-dev` (replace the placeholder). It has its
+own database and needs its own `COUCHDB_PASSWORD`; it is not used by Workers
+Builds, which targets the top-level storage Worker.
 
 ### Test-only names you will see in the code
 
@@ -199,9 +200,9 @@ The build log ends with something like:
 
 ```
 Total Upload: ... KiB / gzip: ... KiB
-Uploaded live (x.xx sec)
-Deployed live triggers
-  https://live.<account-subdomain>.workers.dev
+Uploaded your-worker-name (x.xx sec)
+Deployed your-worker-name triggers
+  https://your-worker-name.<account-subdomain>.workers.dev
 ```
 
 The first build deploys the same code that is running now, so Obsidian keeps
@@ -210,13 +211,13 @@ working. The `COUCHDB_PASSWORD` Worker secret is left in place.
 ## Verify
 
 ```sh
-curl -u admin:'YOUR_PASSWORD' https://live.<account-subdomain>.workers.dev/vault
+curl -u admin:'YOUR_PASSWORD' https://your-worker-name.<account-subdomain>.workers.dev/vault
 ```
 
 Expect JSON with `"doc_count"` and `"update_seq"`. For live request logs:
 
 ```sh
-npx wrangler tail live
+npx wrangler tail your-worker-name
 ```
 
 An edit in Obsidian should produce `POST /vault/_revs_diff 200`,
@@ -239,7 +240,7 @@ Either redeploy an older commit from the dashboard (**Deployments → … → Ro
 back**), or from a machine with Wrangler logged in:
 
 ```sh
-npx wrangler rollback live
+npx wrangler rollback your-worker-name
 ```
 
 Neither touches the R2 backups.
@@ -315,7 +316,7 @@ one of them may already hold the new password or the encrypted settings.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `The name in your Wrangler configuration file ... must match` | dashboard Worker name ≠ `wrangler.jsonc` `name` | rename one to `live` |
+| `The name in your Wrangler configuration file ... must match` | dashboard Worker name ≠ `wrangler.jsonc` `name` | rename one so both are the name you chose |
 | Repository not listed when connecting | Cloudflare GitHub app lacks access to the private repo | GitHub → Settings → Applications → Cloudflare Workers → Configure → add the repo |
 | Build fails at `npm ci` with an engine error | build image ignored `.nvmrc` | set build variable `NODE_VERSION=24` in Settings → Builds |
 | `Missing script: "build"` | build command left as `npm run build` | use `npm run check:storage` or leave it empty |

@@ -32,7 +32,7 @@ Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince
 ## How it works
 
 ```
-Obsidian (LiveSync)  ──HTTPS──>  Worker (live)
+Obsidian (LiveSync)  ──HTTPS──>  Worker (your-worker-name)
                                    │  CouchDB subset: _bulk_docs, _revs_diff,
                                    │  _changes (longpoll/continuous), _local, ...
                                    ▼
@@ -46,11 +46,16 @@ One Durable Object per database (one vault). The plugin's E2EE passphrase encryp
 
 ## Deploy
 
+Pick any **Worker name** you like (for example `live` or `my-vault-sync`): you
+choose it yourself in Cloudflare the first time, and it must match `name` in
+`wrangler.jsonc` — which ships with the placeholder `your-worker-name` for you to
+replace. Nothing else depends on the name.
+
 ### Option A — Workers Builds (no API token)
 
 Connect the repository once, then every push to `main` builds and deploys.
 
-1. Dashboard → **Workers & Pages** → **live** → **Settings → Builds → Connect**
+1. Dashboard → **Workers & Pages** → your Worker (the name you chose) → **Settings → Builds → Connect**
    (for a fresh install: **Create application → Continue with GitHub**).
 2. Repository `taxin-404/obsidian-livesync-cloudflare`, branch `main`.
 3. Build command `npm run check:storage`, deploy command `npm run deploy`,
@@ -59,9 +64,9 @@ Connect the repository once, then every push to `main` builds and deploys.
 
 No Cloudflare API token is involved: Cloudflare's GitHub app is the credential,
 and the build service manages its own deploy token. The dashboard Worker name
-(`live`) already matches `name` in `wrangler.jsonc`, which Workers
-Builds requires. Existing Worker secrets, including `COUCHDB_PASSWORD`, are not
-touched by a deploy.
+must equal `name` in `wrangler.jsonc`, which Workers Builds requires — set both
+to the name you chose. Existing Worker secrets, including `COUCHDB_PASSWORD`, are
+not touched by a deploy.
 
 The deploy command itself checks whether R2 is available and deploys with
 backups when it is, or without backups when it is not — no dashboard choice.
@@ -305,10 +310,10 @@ finish or reset that rebuild first, then unlock.
 ## Operations
 
 ```sh
-npx wrangler tail live          # live logs
+npx wrangler tail your-worker-name          # live logs
 npm run rotate:password -- --vault ~/Documents/notes   # rotate every dependent secret
 npm run check:secrets -- --vault ~/Documents/notes     # find the link that drifted
-npx wrangler delete live        # tear down Worker
+npx wrangler delete your-worker-name        # tear down Worker
 npx wrangler r2 bucket delete obsidian-sync-backups
 ```
 
