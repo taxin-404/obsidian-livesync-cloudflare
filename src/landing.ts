@@ -1,5 +1,10 @@
 import type { AppEnv } from './types';
 
+export const SETUP_TICKET_MAX_AGE_MS = 60_000;
+const SETUP_TICKET_VERSION = 'v1';
+const SETUP_TICKET_CONTEXT = 'livesync-page-ticket:v1:';
+const SETUP_TICKET_SIGNATURE_BYTES = 32;
+
 const ESCAPES: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -29,6 +34,59 @@ async function passwordMatches(submitted: string, expected: string): Promise<boo
   let difference = 0;
   for (let index = 0; index < a.length; index += 1) difference |= a[index] ^ b[index];
   return difference === 0;
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlDecode(value: string): Uint8Array | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
+  const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
+  try {
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+async function ticketKey(password: string): Promise<CryptoKey> {
+  const encoder = new TextEncoder();
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(SETUP_TICKET_CONTEXT + password));
+  return crypto.subtle.importKey('raw', digest, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
+}
+
+export async function createSetupTicket(password: string, now = Date.now()): Promise<string> {
+  const expiresAt = now + SETUP_TICKET_MAX_AGE_MS;
+  const nonce = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+  const payload = `${SETUP_TICKET_VERSION}.${expiresAt}.${nonce}`;
+  const key = await ticketKey(password);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload));
+  return `${payload}.${base64UrlEncode(new Uint8Array(signature))}`;
+}
+
+export async function verifySetupTicket(ticket: string, password: string, now = Date.now()): Promise<boolean> {
+  const parts = ticket.split('.');
+  if (parts.length !== 4) return false;
+  const [version, expiresAtText, nonce, signatureText] = parts;
+  if (version !== SETUP_TICKET_VERSION) return false;
+  const expiresAt = Number(expiresAtText);
+  if (!Number.isSafeInteger(expiresAt)) return false;
+  if (expiresAt <= now || expiresAt > now + SETUP_TICKET_MAX_AGE_MS) return false;
+  const signature = base64UrlDecode(signatureText);
+  if (!signature || signature.byteLength !== SETUP_TICKET_SIGNATURE_BYTES) return false;
+  const key = await ticketKey(password);
+  return crypto.subtle.verify(
+    'HMAC',
+    key,
+    signature,
+    new TextEncoder().encode(`${version}.${expiresAt}.${nonce}`),
+  );
 }
 
 function page(title: string, body: string): string {
