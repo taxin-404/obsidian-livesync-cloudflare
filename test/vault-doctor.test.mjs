@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rename, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
 import { discoverVaults, doctorVaults, parseArgs } from '../scripts/vault-doctor.mjs';
 import { makeVault } from './helpers/vault-fixture.mjs';
@@ -53,6 +55,40 @@ test('reads a plaintext remote entry', async () => {
 test('returns no vaults when the registry is missing', async () => {
   const dirs = await discoverVaults({ registryPath: '/definitely/not/here.json' });
   assert.deepEqual(dirs, []);
+});
+
+test('returns no vaults when the registry is malformed', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'livesync-registry-'));
+  const registryPath = path.join(dir, 'obsidian.json');
+  await writeFile(registryPath, '{ this is not json');
+  assert.deepEqual(await discoverVaults({ registryPath }), []);
+});
+
+test('counts two vaults that share a basename as a collision', async () => {
+  const a = await makeVault();
+  const b = await makeVault();
+  const root = await mkdtemp(path.join(tmpdir(), 'livesync-roots-'));
+  const aDir = path.join(root, 'a', 'notes');
+  const bDir = path.join(root, 'b', 'notes');
+  await mkdir(path.dirname(aDir), { recursive: true });
+  await mkdir(path.dirname(bDir), { recursive: true });
+  await rename(a.vaultDir, aDir);
+  await rename(b.vaultDir, bDir);
+  const report = await doctorVaults([aDir, bDir]);
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.collisions.map((c) => c.target), ['host.test/vault']);
+  assert.equal(report.collisions[0].vaults.length, 2);
+});
+
+test('never prints a secret from a vault that cannot be read', async () => {
+  const secret = 's3cr3tkey';
+  const dir = await mkdtemp(path.join(tmpdir(), 'livesync-broken-'));
+  const pluginDir = path.join(dir, '.obsidian', 'plugins', 'obsidian-livesync');
+  await mkdir(pluginDir, { recursive: true });
+  await writeFile(path.join(pluginDir, 'data.json'), `{"configPassphraseStore": ${secret},}`);
+  const report = await doctorVaults([dir]);
+  assert.equal(JSON.stringify(report).includes(secret), false);
+  assert.equal(typeof report.vaults[0].error, 'string');
 });
 
 test('never prints a secret', async () => {

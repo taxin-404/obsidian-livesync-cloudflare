@@ -57,7 +57,14 @@ async function inspectVault(vaultDir) {
       targets: [...targets].sort(),
     };
   } catch (error) {
-    return { name, dir, liveSync: false, activeConfigurationId: '', targets: [], error: error.message };
+    // Never echo the parser's message: V8's JSON syntax errors embed an input
+    // snippet, which for a truncated data.json is part of the config passphrase
+    // or an encrypted blob. Classify instead.
+    const reason =
+      error instanceof SyntaxError
+        ? 'data.json is not valid JSON'
+        : `the vault data could not be read${error?.code ? ` (${error.code})` : ''}`;
+    return { name, dir, liveSync: false, activeConfigurationId: '', targets: [], error: reason };
   }
 }
 
@@ -69,18 +76,21 @@ export async function doctorVaults(vaultDirs) {
   const vaults = [];
   for (const dir of vaultDirs) vaults.push(await inspectVault(dir));
 
+  // Key by resolved directory, not by name: two vaults that share a basename
+  // (e.g. two `notes` directories) are still two distinct vaults, and a shared
+  // target must be reported rather than collapsed into one.
   const byTarget = new Map();
   for (const vault of vaults) {
     for (const target of vault.targets) {
-      const names = byTarget.get(target) ?? new Set();
-      names.add(vault.name);
-      byTarget.set(target, names);
+      const known = byTarget.get(target) ?? new Map();
+      known.set(vault.dir, vault.name);
+      byTarget.set(target, known);
     }
   }
 
   const collisions = [];
-  for (const [target, names] of byTarget) {
-    if (names.size > 1) collisions.push({ target, vaults: [...names] });
+  for (const [target, known] of byTarget) {
+    if (known.size > 1) collisions.push({ target, vaults: [...known.keys()].sort() });
   }
 
   const ok = collisions.length === 0;
@@ -167,8 +177,10 @@ function printReport(report) {
     console.log('\nNo two vaults share a sync target.');
     return;
   }
+  const label = new Map(report.vaults.map((vault) => [vault.dir, vault.name]));
   for (const collision of report.collisions) {
-    console.log(`\nCollision: ${collision.vaults.join(', ')} all sync to ${collision.target}.`);
+    const vaults = collision.vaults.map((dir) => `${label.get(dir) ?? 'vault'} (${dir})`);
+    console.log(`\nCollision: ${vaults.join(', ')} all sync to ${collision.target}.`);
     console.log('Keep one vault on that target and turn LiveSync off in the others; nothing was changed.');
   }
 }

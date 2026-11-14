@@ -246,7 +246,9 @@ same documents, and LiveSync cancels a vault's push while it has unresolved
 conflicts — the vault looks stuck. `vault:doctor` scans the vaults Obsidian
 knows about (plus any `--vault <dir>` or `--root <dir>` you name), prints each
 one's sync target and whether LiveSync is on, and exits non-zero when two vaults
-share a target. It only reads; it changes nothing.
+share a target. It checks every saved remote configuration, not only the active
+one, because a vault can keep syncing even when its active configuration is
+empty. It only reads; it changes nothing.
 
 ```sh
 npm run vault:doctor
