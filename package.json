@@ -74,7 +74,7 @@
     "rotate:password": "node scripts/rotate-password.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
     "vault:doctor": "node scripts/vault-doctor.mjs",
-    "test:upstream": "node --test test/upstream-sync.test.mjs",
+    "test:upstream": "node --test test/upstream-sync.test.mjs test/upstream-pouchdb-workflow.test.mjs",
     "upstream:check": "node scripts/upstream-sync.mjs status",
     "upstream:diff": "node scripts/upstream-sync.mjs diff",
     "upstream:apply": "node scripts/upstream-sync.mjs apply",
