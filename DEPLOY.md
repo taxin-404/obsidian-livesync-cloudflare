@@ -4,25 +4,38 @@ This guide deploys the Cloudflare PouchDB storage Worker to your own Cloudflare
 account. The optional MCP Worker can be deployed alongside it after its GitHub
 OAuth settings are configured.
 
+## First-time checklist
+
+1. Choose a Worker name — any name works, and there is no default.
+2. Make sure that name is in `wrangler.jsonc` `"name"`: the button writes it
+   there, and a local or fork deploy replaces `your-worker-name` with it.
+3. Choose `COUCHDB_PASSWORD`; save it for Obsidian.
+4. Deploy with the button or the local command below.
+5. Connect Obsidian LiveSync to the printed `workers.dev` URL.
+
 ## Deploy from your computer
 
 Use Wrangler to deploy from a local checkout:
 
-1. Install Node.js 22.18.x–22.x or 24.11.0 and later and clone the repository.
+1. Install Node.js 22.18.x–22.x or 24.11.0 and later, clone this repository,
+   and set `name` in `wrangler.jsonc` to the Worker name you chose.
 
    ```sh
-   git clone https://github.com/robince/cloudflare-obsidian-livesync-mcp.git
-   cd cloudflare-obsidian-livesync-mcp
+   git clone https://github.com/taxin-404/obsidian-livesync-cloudflare.git
+   cd obsidian-livesync-cloudflare
    npm ci
+   # edit "name" in wrangler.jsonc (replace your-worker-name)
    ```
 
-2. Copy the portable configuration and secret example. Edit only the deployment
-   copy for your account; replace the password placeholder with a strong, unique
-   password. Both local files are ignored by Git.
+2. Copy the secret example and replace the password placeholder with a strong,
+   unique password. `.dev.vars` is ignored by Git. A `wrangler.deploy.jsonc`
+   copy is optional: `npm run deploy` reads `wrangler.jsonc` directly, while
+   `npm run deploy:storage` reads the ignored copy.
 
    ```sh
-   cp wrangler.jsonc wrangler.deploy.jsonc
    cp .dev.vars.example .dev.vars
+   # edit .dev.vars
+   # optional: cp wrangler.jsonc wrangler.deploy.jsonc
    ```
 
 3. Sign in to the Cloudflare account where the Worker should run, then deploy
@@ -34,12 +47,16 @@ Use Wrangler to deploy from a local checkout:
    ```
 
    In this repository `npm run deploy` publishes the storage Worker from
-   `wrangler.jsonc`, so copying `wrangler.deploy.jsonc` is optional and only
-   needed if you keep a per-account configuration (`npm run deploy:storage`).
+   `wrangler.jsonc`, so the Worker name comes from the line you set in step 1;
+   the optional `wrangler.deploy.jsonc` copy is only used by
+   `npm run deploy:storage`.
 
 Wrangler opens Cloudflare authentication in a browser. On success, it provisions
-the SQLite Durable Object and private backup R2 bucket, applies its migration, uploads `COUCHDB_PASSWORD` as
-an encrypted Worker secret, and prints the deployed `workers.dev` URL.
+the SQLite Durable Object and applies its migration, uploads `COUCHDB_PASSWORD`
+from `--secrets-file` as an encrypted Worker secret, and prints the deployed
+`workers.dev` URL. When the account can use R2, it also creates the private
+backup bucket and backup schedule; when it cannot, it deploys the same Worker
+without backups.
 
 You do not need to create a Cloudflare API token or copy an account ID, database
 ID, or Durable Object ID.
@@ -49,7 +66,7 @@ ID, or Durable Object ID.
 The button deploys **only the storage Worker**, its SQLite Durable Object,
 private R2 backup bucket, and backup schedule. It does not deploy the MCP Worker.
 
-[![Deploy sync server to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/robince/cloudflare-obsidian-livesync-mcp)
+[![Deploy sync server to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/taxin-404/obsidian-livesync-cloudflare)
 
 On Cloudflare's setup page:
 
@@ -75,14 +92,17 @@ On Cloudflare's setup page:
    The password prompt comes from the committed `.dev.vars.example`; non-secret
    settings come from `wrangler.jsonc`. `package.json` supplies the field
    descriptions. No local `.dev.vars` or `wrangler.deploy.jsonc` is needed for
-   this browser setup. Never use the example password unchanged.
+   this browser setup. Never use the example password unchanged. The setup page
+   writes the Worker name you enter into the new repository's `wrangler.jsonc`,
+   so the dashboard Worker and the configuration agree.
 4. Deploy, then enter the resulting Worker URL, database, username, and password
    in Obsidian LiveSync. Follow the README's recommended sync mode.
 
 Cloudflare creates a copy of the repository and records resource configuration
 there. For subsequent Workers Builds deployments, retain the storage-only command
-above. If you later deploy locally, copy that installation's updated configuration
-into `wrangler.deploy.jsonc`, preserving its Worker name and provisioned resources.
+above. If you later deploy locally, use that installation's updated
+`wrangler.jsonc` (or copy it to `wrangler.deploy.jsonc` and use
+`npm run deploy:storage`), preserving its Worker name and provisioned resources.
 
 ### Why there is no MCP deploy button
 
@@ -111,7 +131,7 @@ See Cloudflare's [button configuration and monorepo limitations](https://develop
 To change the password after deployment, run:
 
 ```sh
-npx wrangler secret put COUCHDB_PASSWORD --config wrangler.deploy.jsonc
+npx wrangler secret put COUCHDB_PASSWORD --name <the Worker name you chose>
 ```
 
 ## Vault backups
@@ -158,10 +178,12 @@ preserved without requiring a local secret file.
 ## Configuration files
 
 Each Worker keeps a committed `wrangler.jsonc` for portable defaults and local
-tests. Copy it to an ignored `wrangler.deploy.jsonc` in the same directory for
-actual deployments. The deploy scripts explicitly select the ignored copies
-and fail if they are missing. Tests, type generation, and CI dry runs use the
-committed templates.
+tests. `npm run deploy` reads the storage Worker's committed `wrangler.jsonc`
+directly — set its `"name"` to the Worker name you chose. If you prefer a
+separate per-account copy, create an ignored `wrangler.deploy.jsonc` in the same
+directory and use `npm run deploy:storage`; the MCP deploy scripts use their
+ignored copies too and fail if missing. Tests, type generation, and CI dry runs
+use the committed templates.
 
 Deployment files contain non-secret configuration: Worker names, public URLs,
 vault names, GitHub Client IDs, allowlists, write settings, and provisioned
@@ -176,9 +198,10 @@ environment. When it is `"false"`, it passes Wrangler a temporary copy without
 the backup R2 binding and with an empty cron schedule. It leaves the saved
 configuration intact. Enabled deployments use the saved file directly.
 
-For automated deployment, supply the deployment file to the build environment
-before running the deploy scripts. Do not commit account-specific values merely
-to make a Git-based build work.
+For automated deployment with `npm run deploy`, the committed `wrangler.jsonc`
+is the deployment file. Do not commit account-specific secrets merely to make a
+Git-based build work; the ignored `wrangler.deploy.jsonc` copies are for local
+`deploy:storage` and MCP deployments.
 
 ## Default and development deployments
 
@@ -189,18 +212,20 @@ configuration also defines an optional `env.dev` (`your-worker-name-dev` and
 
 | Command | Target |
 | --- | --- |
-| `npm run deploy` | Both default Workers, storage first |
-| `npm run deploy:storage` | Default storage only |
-| `npm run deploy:no-r2` | Default storage only, from `wrangler.jsonc`, without R2 |
-| `npm run deploy:mcp` | Default MCP only |
+| `npm run deploy` | Storage only, from `wrangler.jsonc` |
+| `npm run deploy:storage` | Storage only, from `wrangler.deploy.jsonc` |
+| `npm run deploy:no-r2` | Storage only, from `wrangler.jsonc`, without R2 |
+| `npm run deploy:mcp` | MCP only, from `apps/cloudflare-obsidian-mcp/wrangler.deploy.jsonc` |
 | `npm run deploy:dev` | Both dev Workers, storage first |
 | `npm run deploy:storage:dev` | Dev storage only |
 | `npm run deploy:mcp:dev` | Dev MCP only |
 
-Except `deploy:no-r2`, these commands use the ignored deployment copies. Default
-commands explicitly select the top-level configuration (`--env ""`); dev
-commands select `--env dev`. Configure default values at the top level and dev
-values under `env.dev`. Do not pass `--env` to the aggregate npm scripts.
+`deploy`, `deploy:no-r2`, and `deploy:storage:template` read the committed
+`wrangler.jsonc`; the `deploy:storage*`, `deploy:mcp*`, and `deploy:dev` commands
+use the ignored `wrangler.deploy.jsonc` copies. Default commands explicitly
+select the top-level configuration (`--env ""`); dev commands select `--env dev`.
+Configure default values at the top level and dev values under `env.dev`. Do not
+pass `--env` to the aggregate npm scripts.
 
 Wrangler does not inherit variables or resource bindings into named environments.
 Keep the complete dev `vars`, Durable Object bindings, backup R2 binding, and OAuth KV
@@ -253,7 +278,8 @@ it does not affect Obsidian sync. `MCP_HIDE_DOT_FOLDERS="true"` is recommended f
 new installations; its default is false. See [folder access policy](apps/cloudflare-obsidian-mcp/README.md#folder-access-policy)
 for matching rules, read-only folders, privacy boundaries and local examples.
 
-Deploy both Workers together using `npm run deploy` (storage first, then MCP).
+Deploy storage first with `npm run deploy`, then the MCP Worker with
+`npm run deploy:mcp`.
 A brief MCP incompatibility window is acceptable; standard Obsidian/CouchDB sync
 remains unchanged. The derived search index rebuilds on first search after the
 upgrade without modifying vault documents; retry while it catches up. Check a

@@ -51,16 +51,24 @@ choose it yourself in Cloudflare the first time, and it must match `name` in
 `wrangler.jsonc` — which ships with the placeholder `your-worker-name` for you to
 replace. Nothing else depends on the name.
 
+**First time?** The **Deploy to Cloudflare** button in
+[DEPLOY.md](DEPLOY.md#deploy-with-the-cloudflare-button) is the shortest path:
+it copies this repository to your GitHub account, asks you to choose the Worker
+name and `COUCHDB_PASSWORD`, and deploys. No terminal is needed.
+
 ### Option A — Workers Builds (no API token)
 
-Connect the repository once, then every push to `main` builds and deploys.
+Use this when the repository is already in your GitHub account and you want
+every push to `main` to build and deploy.
 
-1. Dashboard → **Workers & Pages** → your Worker (the name you chose) → **Settings → Builds → Connect**
+1. Fork this repository to your own GitHub account, and set `name` in the fork's
+   `wrangler.jsonc` to the Worker name you chose (replacing `your-worker-name`).
+2. Dashboard → **Workers & Pages** → your Worker (the name you chose) → **Settings → Builds → Connect**
    (for a fresh install: **Create application → Continue with GitHub**).
-2. Repository `taxin-404/obsidian-livesync-cloudflare`, branch `main`.
-3. Build command `npm run check:storage`, deploy command `npm run deploy`,
+3. Repository: **your fork**, branch `main`.
+4. Build command `npm run check:storage`, deploy command `npm run deploy`,
    root `/`, preview builds off.
-4. Save and push to `main`.
+5. Save and push to `main`.
 
 No Cloudflare API token is involved: Cloudflare's GitHub app is the credential,
 and the build service manages its own deploy token. The dashboard Worker name
@@ -118,8 +126,12 @@ variable: `NODE_VERSION=24` if you do not want to rely on `.nvmrc`. Details:
 
 ### Option B — Local deploy
 
+Set `name` in `wrangler.jsonc` to the Worker name you chose (replacing
+`your-worker-name`) before deploying.
+
 ```sh
-git clone <this repo> && cd <repo>
+git clone https://github.com/taxin-404/obsidian-livesync-cloudflare.git
+cd obsidian-livesync-cloudflare
 npm ci
 cp .dev.vars.example .dev.vars        # set a strong COUCHDB_PASSWORD
 npx wrangler login

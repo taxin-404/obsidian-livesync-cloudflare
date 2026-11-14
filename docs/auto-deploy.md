@@ -4,9 +4,8 @@ Push to `main` and Cloudflare rebuilds and redeploys the Worker. There is **no
 Cloudflare API token** to create: Cloudflare's own GitHub app is the credential,
 and Workers Builds generates and stores its own deploy token.
 
-This is the same mechanism used by the other Workers on this account
-(`terabox-webdav-worker`), just attached to your existing storage Worker
-so its URL and database survive.
+This is the same mechanism used by other Workers, just attached to your storage
+Worker so its URL and database survive.
 
 ## How it works
 
@@ -49,7 +48,7 @@ deploy without backups, add `--require-r2`. See
 ### The name must match
 
 Workers Builds requires the Worker name in the dashboard to equal `name` in the
-Wrangler configuration. Ours does:
+Wrangler configuration. Set both to the same value:
 
 | Where | Value |
 | --- | --- |
@@ -120,8 +119,7 @@ one entry, `COUCHDB_PASSWORD` (type: Secret). Everything else is either in
 | `COUCHDB_PASSWORD` | the password your Obsidian devices use | Worker → **Settings → Variables and secrets** → add as **Secret** |
 
 That is the complete list of dashboard entries. Your existing storage Worker
-Worker already has it, so connecting Workers Builds requires **no new secret at
-all**. If you are creating a fresh Worker, add it once before the first sync.
+already has it, so connecting Workers Builds requires **no new secret at all**. If you are creating a fresh Worker, add it once before the first sync.
 
 Adding the same password as a plain *variable* instead of a *secret* would
 expose it in the dashboard and in exports; use the Secret checkbox.
