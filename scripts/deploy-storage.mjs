@@ -35,6 +35,46 @@ export function backupsRequested(text, environment = '') {
   return enabled === 'true';
 }
 
+function summarize(output) {
+  const lines = output
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !/wrangler \d/i.test(line) && !/update available/i.test(line) && !/^[─\s]+$/.test(line));
+  return lines[0] || 'unknown error';
+}
+
+const R2_ABORT_PATTERN =
+  /multiple accounts|more than one account|account_id|not authenticated|authentication|fetch failed|ENOTFOUND|ECONN/i;
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export async function resolveBackupMode({
+  requested,
+  noR2 = false,
+  requireR2 = false,
+  probeR2,
+  retryDelayMs = 1500,
+  sleep = defaultSleep,
+}) {
+  if (noR2 && requireR2) throw new Error('Use either --no-r2 or --require-r2, not both.');
+  if (noR2) return { noR2: true, notice: null };
+  if (!requested) return { noR2: true, notice: null };
+  let result = await probeR2();
+  if (!result.ok) {
+    await sleep(retryDelayMs);
+    result = await probeR2();
+  }
+  if (result.ok) return { noR2: false, notice: 'R2 is available — deploying with backups.' };
+  const detail = summarize(result.output);
+  if (requireR2) throw new Error(`R2 is required but not available: ${detail}`);
+  if (R2_ABORT_PATTERN.test(result.output)) throw new Error(`Cannot check R2: ${detail}`);
+  return {
+    noR2: true,
+    notice: `R2 is not available on this account (${detail}).\nDeploying without backups. The bucket and its data are untouched; the next deploy restores backups once R2 is enabled.`,
+  };
+}
+
 export function deployArgs(argv) {
   const [configPath, environment, ...args] = argv;
   if (!configPath || environment === undefined) {

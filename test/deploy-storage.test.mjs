@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { backupsRequested, deployArgs, deploymentConfig } from '../scripts/deploy-storage.mjs';
+import { backupsRequested, deployArgs, deploymentConfig, resolveBackupMode } from '../scripts/deploy-storage.mjs';
 
 const template = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 
@@ -93,4 +93,66 @@ test('reads whether the selected configuration asks for backups', () => {
   }
   assert.throws(() => backupsRequested(JSON.stringify(template), 'missing'), /Missing deployment environment/);
   assert.throws(() => backupsRequested('{oops', ''), /./);
+});
+
+const noSleep = async () => {};
+const probeResult = (result) => ({ requested: true, probeR2: async () => result, sleep: noSleep });
+
+test('auto mode keeps backups when the R2 check succeeds', async () => {
+  const mode = await resolveBackupMode(probeResult({ ok: true, output: '' }));
+  assert.equal(mode.noR2, false);
+  assert.match(mode.notice, /R2 is available/);
+});
+
+test('auto mode drops backups when the R2 check fails for an R2 reason', async () => {
+  const mode = await resolveBackupMode(probeResult({ ok: false, output: 'R2 is not enabled for this account' }));
+  assert.equal(mode.noR2, true);
+  assert.match(mode.notice, /R2 is not enabled for this account/);
+  assert.match(mode.notice, /without backups/);
+});
+
+test('auto mode retries the R2 check once before deciding', async () => {
+  let calls = 0;
+  const probeR2 = async () => {
+    calls++;
+    return calls === 1 ? { ok: false, output: 'temporary failure' } : { ok: true, output: '' };
+  };
+  const mode = await resolveBackupMode({ requested: true, probeR2, sleep: noSleep });
+  assert.equal(calls, 2);
+  assert.equal(mode.noR2, false);
+});
+
+for (const output of [
+  'More than one account available but unable to select one',
+  'You are not authenticated.',
+  'Authentication error [code: 10000]',
+  'fetch failed',
+]) {
+  test(`auto mode stops for an unusable-account R2 check: ${output}`, async () => {
+    await assert.rejects(() => resolveBackupMode(probeResult({ ok: false, output })), /Cannot check R2/);
+  });
+}
+
+test('auto mode does not check R2 when backups are disabled or forced off', async () => {
+  for (const options of [
+    { requested: false, probeR2: async () => { throw new Error('must not run'); } },
+    { requested: true, noR2: true, probeR2: async () => { throw new Error('must not run'); } },
+  ]) {
+    const mode = await resolveBackupMode({ ...options, sleep: noSleep });
+    assert.deepEqual(mode, { noR2: true, notice: null });
+  }
+});
+
+test('require-r2 stops when the check fails', async () => {
+  await assert.rejects(
+    () => resolveBackupMode({ ...probeResult({ ok: false, output: 'R2 is not enabled' }), requireR2: true }),
+    /R2 is required but not available/,
+  );
+});
+
+test('require-r2 and no-r2 together are rejected', async () => {
+  await assert.rejects(
+    () => resolveBackupMode({ requested: true, noR2: true, requireR2: true, probeR2: async () => ({ ok: true, output: '' }) }),
+    /not both/,
+  );
 });
