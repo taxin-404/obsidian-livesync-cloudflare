@@ -5,8 +5,21 @@ A **CouchDB-compatible sync server for [Self-hosted LiveSync](https://github.com
 - **real-time continuous sync** (`_changes` long-poll / continuous feed),
 - **server-side storage while other devices are offline**,
 - **end-to-end encryption** (the server stores encrypted chunks only),
-- **daily R2 backups**, and
+- **optional daily R2 backups**, and
 - **$0 on the Workers Free plan** for a single personal vault.
+
+> **No payment card?** R2 requires a billing profile with an accepted card, but
+> sync does not. If you cannot enable R2, deploy without backups:
+>
+> ```sh
+> npm run deploy:no-r2 -- --secrets-file .dev.vars
+> ```
+>
+> For Workers Builds, use
+> `node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` as the deploy
+> command. Sync and the connection page work normally; backup and restore are
+> off, so keep your own copies. Full steps:
+> [Deploy without R2](docs/backup-recovery.md#deploy-without-r2).
 
 Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince/cloudflare-obsidian-livesync-mcp) (MIT). This repository is the storage-only deployment with automation added; the MCP/search Worker is not deployed.
 
