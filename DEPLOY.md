@@ -116,19 +116,24 @@ npx wrangler secret put COUCHDB_PASSWORD --config wrangler.deploy.jsonc
 
 ## Vault backups
 
-To deploy without backups or R2 checkout, set `vars.BACKUP_ENABLED` to the
-string `"false"` in `wrangler.deploy.jsonc` and use `npm run deploy:storage`.
+`npm run deploy` checks whether R2 is available before deploying: it uses
+backups when the account has R2, and omits the R2 binding and clears the cron
+schedule when it does not. Pass `--require-r2` to stop rather than deploy
+without backups, or `--no-r2` to always deploy without them. The check and its
+output are described in
+[docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
+
+To force no backups with an ignored `wrangler.deploy.jsonc`, set
+`vars.BACKUP_ENABLED` to the string `"false"` and use `npm run deploy:storage`.
 For dev, set `env.dev.vars.BACKUP_ENABLED` and use `npm run deploy:storage:dev`.
 The scripts omit the R2 binding and clear the cron schedule automatically;
 no other settings need changing. Set it back to `"true"` and redeploy to
 restore backup functionality. Existing R2 objects are not deleted.
 
-If you deploy `wrangler.jsonc` directly and cannot enable R2, run
-`npm run deploy:no-r2` instead of `npm run deploy` (first deploy:
-`npm run deploy:no-r2 -- --secrets-file .dev.vars`). For Workers Builds, use
+For Workers Builds, `npm run deploy` is the deploy command that performs the
+check; to force no backups there, use
 `node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` as the deploy
-command. Full details:
-[docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
+command.
 
 
 Set `BACKUP_DATABASE` in the storage deployment configuration to the same database

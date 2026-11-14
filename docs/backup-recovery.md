@@ -35,21 +35,46 @@ backup and restore operations are unavailable.
 
 R2 requires an enabled billing profile. If Cloudflare asks for a payment card
 you cannot provide — for example as a student in a country where a
-multicurrency card is hard to obtain — deploy without R2. Sync, the connection
-page and the optional MCP Worker need only Workers and Durable Objects; backups
-are the only R2-dependent feature.
+multicurrency card is hard to obtain — you still do not have to choose.
+`npm run deploy` detects R2 itself. Sync, the connection page and the optional
+MCP Worker need only Workers and Durable Objects; backups are the only
+R2-dependent feature.
+
+**Automatic (the default).** Before deploying, the script runs
+`wrangler r2 bucket list` once (retried once) and decides:
+
+- R2 available: deploys normally with backups and prints
+  `R2 is available — deploying with backups.`
+- R2 not available: deploys the reduced configuration (no `BACKUP_BUCKET`
+  binding, `BACKUP_ENABLED="false"`, no cron triggers) and prints
+  `R2 is not available on this account (...). Deploying without backups. The
+  bucket and its data are untouched; the next deploy restores backups once R2
+  is enabled.` Make sure you can replace that data from elsewhere before relying
+  on a no-backup deployment.
+
+A check that reports an account-selection, authentication or network problem
+(for example `More than one account available`, `not authenticated`, or
+`fetch failed`) **stops the deploy** and shows the Wrangler message instead of
+guessing: those problems would have failed the deploy anyway. The account must
+be selectable, so export `CLOUDFLARE_ACCOUNT_ID` when the login can see more
+than one account.
+
+**Force an outcome.** `--require-r2` stops rather than deploy without backups
+when the check fails; `--no-r2` skips the check and always deploys without
+backups. The two are mutually exclusive.
 
 From a local checkout, pass the same secrets file as the standard local deploy:
 
 ```sh
-npm run deploy:no-r2 -- --secrets-file .dev.vars
+npm run deploy:no-r2 -- --secrets-file .dev.vars   # force no backups
+npm run deploy -- --require-r2 --secrets-file .dev.vars   # require backups
 ```
 
 If `COUCHDB_PASSWORD` is already a Worker secret — including when you add it in
-the dashboard for Workers Builds — `npm run deploy:no-r2` alone is enough.
+the dashboard for Workers Builds — `npm run deploy` alone is enough.
 
-For Workers Builds, use this as the **deploy command** instead of
-`npx wrangler deploy`:
+For Workers Builds, `npm run deploy` is the recommended **deploy command**; it
+performs the check. To force no backups there instead, use:
 
 ```sh
 node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2
@@ -61,11 +86,11 @@ For the dev environment:
 node scripts/deploy-storage.mjs wrangler.jsonc dev --no-r2
 ```
 
-The command builds a temporary configuration that forces
-`BACKUP_ENABLED="false"`, removes only the `BACKUP_BUCKET` binding, and sets
-`crons` to `[]`. `wrangler.jsonc` itself is unchanged, other R2 bindings
-survive, and the temporary file is deleted after the deploy. Existing bucket
-objects are never deleted.
+The reduced deployment forces `BACKUP_ENABLED="false"`, removes only the
+`BACKUP_BUCKET` binding, and sets `crons` to `[]` in a temporary configuration.
+`wrangler.jsonc` itself is unchanged, other R2 bindings survive, and the
+temporary file is deleted after the deploy. Existing bucket objects are never
+deleted.
 
 With backups disabled:
 
@@ -83,7 +108,8 @@ bucket and its objects are reused as long as `bucket_name` stays the same.
 
 #### Custom deployment config
 
-If you deploy from an ignored `wrangler.deploy.jsonc`, set
+If you deploy from an ignored `wrangler.deploy.jsonc`, `npm run deploy:storage`
+performs the same R2 check. To force backups off regardless of R2, set
 `vars.BACKUP_ENABLED` to the string `"false"` there and run
 `npm run deploy:storage`. For dev, set `env.dev.vars.BACKUP_ENABLED` and run
 `npm run deploy:storage:dev`.

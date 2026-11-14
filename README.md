@@ -9,16 +9,10 @@ A **CouchDB-compatible sync server for [Self-hosted LiveSync](https://github.com
 - **$0 on the Workers Free plan** for a single personal vault.
 
 > **No payment card?** R2 requires a billing profile with an accepted card, but
-> sync does not. If you cannot enable R2, deploy without backups:
->
-> ```sh
-> npm run deploy:no-r2 -- --secrets-file .dev.vars
-> ```
->
-> For Workers Builds, use
-> `node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` as the deploy
-> command. Sync and the connection page work normally; backup and restore are
-> off, so keep your own copies. Full steps:
+> sync does not. You do not have to choose: `npm run deploy` checks R2 before
+> deploying and uses backups when the account has them, or deploys without them
+> when it does not. To force an outcome, pass `--no-r2` (never back up) or
+> `--require-r2` (stop instead of deploying without backups). Full steps:
 > [Deploy without R2](docs/backup-recovery.md#deploy-without-r2).
 
 Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince/cloudflare-obsidian-livesync-mcp) (MIT). This repository is the storage-only deployment with automation added; the MCP/search Worker is not deployed.
@@ -59,7 +53,7 @@ Connect the repository once, then every push to `main` builds and deploys.
 1. Dashboard → **Workers & Pages** → **obsidian-sync** → **Settings → Builds → Connect**
    (for a fresh install: **Create application → Continue with GitHub**).
 2. Repository `taxin-404/obsidian-livesync-cloudflare`, branch `main`.
-3. Build command `npm run check:storage`, deploy command `npx wrangler deploy`,
+3. Build command `npm run check:storage`, deploy command `npm run deploy`,
    root `/`, preview builds off.
 4. Save and push to `main`.
 
@@ -69,10 +63,10 @@ and the build service manages its own deploy token. The dashboard Worker name
 Builds requires. Existing Worker secrets, including `COUCHDB_PASSWORD`, are not
 touched by a deploy.
 
-If the account cannot enable R2 because a payment card is unavailable, set the
-deploy command to
-`node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` instead. Sync keeps
-working; scheduled and manual backups stay off. See
+The deploy command itself checks whether R2 is available and deploys with
+backups when it is, or without backups when it is not — no dashboard choice.
+(Bare `npx wrangler deploy` skips that check and fails when R2 is unavailable,
+so use the script.) To force an outcome, pass `--no-r2` or `--require-r2`. See
 [docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
 
 Full guide, including connecting an existing Worker, rollback, and
@@ -128,9 +122,11 @@ npm run deploy -- --secrets-file .dev.vars
 ```
 
 `npm run deploy` publishes the storage Worker only, from `wrangler.jsonc` —
-no extra config file and no API token. If R2 cannot be enabled, use
-`npm run deploy:no-r2 -- --secrets-file .dev.vars` instead; sync still works and
-backups stay off. See
+no extra config file and no API token. It checks whether R2 is available and
+deploys with backups when it is, or without backups when it is not; existing
+bucket data is never touched. Force an outcome with
+`--no-r2` (never back up) or `--require-r2` (stop rather than deploy without
+backups). See
 [docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
 (`npm run deploy:storage` is the
 upstream variant that reads a local, gitignored `wrangler.deploy.jsonc`, and
