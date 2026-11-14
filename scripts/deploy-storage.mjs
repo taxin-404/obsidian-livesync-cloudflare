@@ -92,8 +92,21 @@ export function deployArgs(argv) {
   };
 }
 
-export function deployStorage(argv) {
-  const { configPath, environment, noR2, wranglerArgs } = deployArgs(argv);
+function wranglerPath() {
+  const require = createRequire(import.meta.url);
+  return join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
+}
+
+function createR2Probe() {
+  const wrangler = wranglerPath();
+  return () => {
+    const result = spawnSync(process.execPath, [wrangler, 'r2', 'bucket', 'list'], { encoding: 'utf8' });
+    return { ok: !result.error && result.status === 0, output: `${result.stdout ?? ''}${result.stderr ?? ''}` };
+  };
+}
+
+export async function deployStorage(argv, { probeR2 = createR2Probe(), spawn = spawnSync, sleep } = {}) {
+  const { configPath, environment, noR2, requireR2, wranglerArgs } = deployArgs(argv);
   const source = resolve(configPath);
   let text;
   try {
@@ -106,14 +119,16 @@ export function deployStorage(argv) {
     }
     throw error;
   }
-  const config = deploymentConfig(text, environment, { noR2 });
+  const requested = noR2 ? false : backupsRequested(text, environment);
+  const mode = await resolveBackupMode({ requested, noR2, requireR2, probeR2, sleep });
+  if (mode.notice) console.log(mode.notice);
+  const config = deploymentConfig(text, environment, { noR2: mode.noR2 });
   // Keep the copy beside the original so relative entrypoints and secret files still resolve.
   const temporary = config ? join(dirname(source), `.wrangler-deploy-${randomUUID()}.jsonc`) : null;
-  const require = createRequire(import.meta.url);
-  const wrangler = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
+  const wrangler = wranglerPath();
   try {
     if (temporary) writeFileSync(temporary, JSON.stringify(config, null, 2), { mode: 0o600, flag: 'wx' });
-    const result = spawnSync(process.execPath, [wrangler, 'deploy', '--config', temporary ?? source, '--env', environment, ...wranglerArgs], { stdio: 'inherit' });
+    const result = spawn(process.execPath, [wrangler, 'deploy', '--config', temporary ?? source, '--env', environment, ...wranglerArgs], { stdio: 'inherit' });
     if (result.error) throw result.error;
     return result.status ?? 1;
   } finally {
@@ -122,6 +137,6 @@ export function deployStorage(argv) {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { process.exitCode = deployStorage(process.argv.slice(2)); }
+  try { process.exitCode = await deployStorage(process.argv.slice(2)); }
   catch (error) { console.error(error.message); process.exitCode = 1; }
 }

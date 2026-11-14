@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { backupsRequested, deployArgs, deploymentConfig, resolveBackupMode } from '../scripts/deploy-storage.mjs';
+import { backupsRequested, deployArgs, deploymentConfig, deployStorage, resolveBackupMode } from '../scripts/deploy-storage.mjs';
 
 const template = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 
@@ -164,4 +164,93 @@ test('require-r2 and no-r2 together are rejected', async () => {
     () => resolveBackupMode({ requested: true, noR2: true, requireR2: true, probeR2: async () => ({ ok: true, output: '' }) }),
     /not both/,
   );
+});
+
+const deploySpy = (onConfig) => (execPath, args) => {
+  const configPath = args[args.indexOf('--config') + 1];
+  if (configPath.endsWith('.jsonc') && configPath.includes('.wrangler-deploy-')) onConfig(JSON.parse(readFileSync(configPath, 'utf8')));
+  return { status: 0 };
+};
+
+const temporaryConfigs = () =>
+  readdirSync(new URL('..', import.meta.url)).filter((name) => name.startsWith('.wrangler-deploy-'));
+
+test('deployStorage deploys the reduced config when R2 is unavailable', async () => {
+  const seen = [];
+  let probes = 0;
+  const code = await deployStorage(['wrangler.jsonc', ''], {
+    probeR2: async () => {
+      probes++;
+      return { ok: false, output: 'R2 is not enabled for this account' };
+    },
+    spawn: deploySpy((config) => seen.push(config)),
+    sleep: async () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(probes, 2);
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].vars.BACKUP_ENABLED, 'false');
+  assert.equal((seen[0].r2_buckets ?? []).some((bucket) => bucket.binding === 'BACKUP_BUCKET'), false);
+  assert.deepEqual(temporaryConfigs(), []);
+});
+
+test('deployStorage deploys the untouched config when R2 is available', async () => {
+  const seen = [];
+  let probes = 0;
+  const code = await deployStorage(['wrangler.jsonc', ''], {
+    probeR2: async () => {
+      probes++;
+      return { ok: true, output: '' };
+    },
+    spawn: deploySpy((config) => seen.push(config)),
+    sleep: async () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(probes, 1);
+  assert.deepEqual(seen, [], 'an enabled config needs no temporary file');
+  assert.deepEqual(temporaryConfigs(), []);
+});
+
+test('deployStorage does not check R2 or require a value with --no-r2', async () => {
+  const source = structuredClone(template);
+  delete source.vars.BACKUP_ENABLED;
+  const path = `${new URL('..', import.meta.url).pathname}.wrangler-test-invalid.jsonc`;
+  writeFileSync(path, JSON.stringify(source), { mode: 0o600 });
+  try {
+    const seen = [];
+    const code = await deployStorage([path, '', '--no-r2'], {
+      probeR2: async () => { throw new Error('must not run'); },
+      spawn: deploySpy((config) => seen.push(config)),
+      sleep: async () => {},
+    });
+    assert.equal(code, 0);
+    assert.equal(seen[0].vars.BACKUP_ENABLED, 'false');
+  } finally {
+    rmSync(path, { force: true });
+  }
+});
+
+test('deployStorage stops before deploying when --require-r2 finds no R2', async () => {
+  let spawned = 0;
+  await assert.rejects(
+    () =>
+      deployStorage(['wrangler.jsonc', '', '--require-r2'], {
+        probeR2: async () => ({ ok: false, output: 'R2 is not enabled' }),
+        spawn: () => { spawned++; return { status: 0 }; },
+        sleep: async () => {},
+      }),
+    /R2 is required but not available/,
+  );
+  assert.equal(spawned, 0);
+  assert.deepEqual(temporaryConfigs(), []);
+});
+
+test('deployStorage propagates a deploy failure and removes the temporary file', async () => {
+  const code = await deployStorage(['wrangler.jsonc', ''], {
+    probeR2: async () => ({ ok: false, output: 'R2 is not enabled' }),
+    spawn: () => ({ status: 7 }),
+    sleep: async () => {},
+  });
+  assert.equal(code, 7);
+  assert.deepEqual(temporaryConfigs(), []);
 });
