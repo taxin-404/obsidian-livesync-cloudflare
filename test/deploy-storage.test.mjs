@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { deployArgs, deploymentConfig } from '../scripts/deploy-storage.mjs';
+import { backupsRequested, deployArgs, deploymentConfig } from '../scripts/deploy-storage.mjs';
 
 const template = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 
@@ -74,4 +74,23 @@ test('parses --no-r2 out of the Wrangler arguments', () => {
   });
   assert.throws(() => deployArgs(['wrangler.jsonc', '', '--no-r2', '--var', 'x=1']), /Set configuration/);
   assert.throws(() => deployArgs(['wrangler.jsonc']), /Usage:/);
+});
+
+test('reads whether the selected configuration asks for backups', () => {
+  assert.equal(backupsRequested(JSON.stringify(template), ''), true);
+  assert.equal(backupsRequested(JSON.stringify(template), 'dev'), true);
+  for (const environment of ['', 'dev']) {
+    const source = structuredClone(template);
+    const selected = environment ? source.env[environment] : source;
+    selected.vars.BACKUP_ENABLED = 'false';
+    assert.equal(backupsRequested(JSON.stringify(source), environment), false);
+  }
+  for (const value of [undefined, false, 'FALSE']) {
+    const source = structuredClone(template);
+    if (value === undefined) delete source.vars.BACKUP_ENABLED;
+    else source.vars.BACKUP_ENABLED = value;
+    assert.throws(() => backupsRequested(JSON.stringify(source), ''), /Set BACKUP_ENABLED/);
+  }
+  assert.throws(() => backupsRequested(JSON.stringify(template), 'missing'), /Missing deployment environment/);
+  assert.throws(() => backupsRequested('{oops', ''), /./);
 });

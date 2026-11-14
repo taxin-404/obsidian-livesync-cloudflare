@@ -23,6 +23,18 @@ export function deploymentConfig(text, environment = '', { noR2 = false } = {}) 
   return config;
 }
 
+export function backupsRequested(text, environment = '') {
+  const { config, error } = ts.parseConfigFileTextToJson('wrangler.jsonc', text);
+  if (error) throw new Error(ts.flattenDiagnosticMessageText(error.messageText, '\n'));
+  const selected = environment ? config.env?.[environment] : config;
+  if (!selected) throw new Error(`Missing deployment environment: ${environment}`);
+  const enabled = selected.vars?.BACKUP_ENABLED;
+  if (enabled !== 'true' && enabled !== 'false') {
+    throw new Error('Set BACKUP_ENABLED to the string "true" or "false" in the selected configuration.');
+  }
+  return enabled === 'true';
+}
+
 export function deployArgs(argv) {
   const [configPath, environment, ...args] = argv;
   if (!configPath || environment === undefined) {
