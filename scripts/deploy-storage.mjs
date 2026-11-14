@@ -78,7 +78,7 @@ export async function resolveBackupMode({
 export function deployArgs(argv) {
   const [configPath, environment, ...args] = argv;
   if (!configPath || environment === undefined) {
-    throw new Error('Usage: deploy-storage.mjs CONFIG ENV [--no-r2] [Wrangler deploy options]');
+    throw new Error('Usage: deploy-storage.mjs CONFIG ENV [--no-r2 | --require-r2] [Wrangler deploy options]');
   }
   if (args.some(arg => /^(--config|--env|--var|-c|-e)(=|$)/.test(arg))) {
     throw new Error('Set configuration, environment and variables in the deployment config, not extra Wrangler options.');
@@ -87,7 +87,8 @@ export function deployArgs(argv) {
     configPath,
     environment,
     noR2: args.includes('--no-r2'),
-    wranglerArgs: args.filter(arg => arg !== '--no-r2'),
+    requireR2: args.includes('--require-r2'),
+    wranglerArgs: args.filter(arg => arg !== '--no-r2' && arg !== '--require-r2'),
   };
 }
 

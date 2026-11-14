@@ -59,17 +59,26 @@ test('no-R2 deployment ignores a missing or invalid BACKUP_ENABLED value', () =>
   }
 });
 
-test('parses --no-r2 out of the Wrangler arguments', () => {
+test('parses --no-r2 and --require-r2 out of the Wrangler arguments', () => {
   assert.deepEqual(deployArgs(['wrangler.jsonc', '', '--no-r2', '--dry-run']), {
     configPath: 'wrangler.jsonc',
     environment: '',
     noR2: true,
+    requireR2: false,
     wranglerArgs: ['--dry-run'],
+  });
+  assert.deepEqual(deployArgs(['wrangler.jsonc', 'dev', '--require-r2']), {
+    configPath: 'wrangler.jsonc',
+    environment: 'dev',
+    noR2: false,
+    requireR2: true,
+    wranglerArgs: [],
   });
   assert.deepEqual(deployArgs(['wrangler.jsonc', 'dev']), {
     configPath: 'wrangler.jsonc',
     environment: 'dev',
     noR2: false,
+    requireR2: false,
     wranglerArgs: [],
   });
   assert.throws(() => deployArgs(['wrangler.jsonc', '', '--no-r2', '--var', 'x=1']), /Set configuration/);
