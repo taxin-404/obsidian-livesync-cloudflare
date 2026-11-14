@@ -116,7 +116,8 @@ npm run deploy -- --secrets-file .dev.vars
 
 `npm run deploy` publishes the storage Worker only, from `wrangler.jsonc` —
 no extra config file and no API token. If R2 cannot be enabled, use
-`npm run deploy:no-r2` instead; sync still works and backups stay off. See
+`npm run deploy:no-r2 -- --secrets-file .dev.vars` instead; sync still works and
+backups stay off. See
 [docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
 (`npm run deploy:storage` is the
 upstream variant that reads a local, gitignored `wrangler.deploy.jsonc`, and
@@ -125,7 +126,7 @@ upstream variant that reads a local, gitignored `wrangler.deploy.jsonc`, and
 If the account has more than one Cloudflare account, select it when Wrangler
 prompts, or export `CLOUDFLARE_ACCOUNT_ID` first.
 
-The deployment creates the Worker, its SQLite Durable Object, the private R2 bucket, and the password secret. The URL is printed at the end.
+With backups enabled, the deployment creates the Worker, its SQLite Durable Object, the private R2 bucket, and the password secret. A no-R2 deployment creates the same Worker and Durable Object, but no bucket; the password secret comes from the dashboard or the `--secrets-file` you pass. The URL is printed at the end.
 
 ## Connect Obsidian (first device)
 

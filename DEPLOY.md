@@ -123,6 +123,13 @@ The scripts omit the R2 binding and clear the cron schedule automatically;
 no other settings need changing. Set it back to `"true"` and redeploy to
 restore backup functionality. Existing R2 objects are not deleted.
 
+If you deploy `wrangler.jsonc` directly and cannot enable R2, run
+`npm run deploy:no-r2` instead of `npm run deploy` (first deploy:
+`npm run deploy:no-r2 -- --secrets-file .dev.vars`). For Workers Builds, use
+`node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` as the deploy
+command. Full details:
+[docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
+
 
 Set `BACKUP_DATABASE` in the storage deployment configuration to the same database
 name used in LiveSync (default `vault`). The deployment provisions a private R2
@@ -178,15 +185,16 @@ suffix. Each configuration also defines an optional `env.dev` for
 | --- | --- |
 | `npm run deploy` | Both default Workers, storage first |
 | `npm run deploy:storage` | Default storage only |
+| `npm run deploy:no-r2` | Default storage only, from `wrangler.jsonc`, without R2 |
 | `npm run deploy:mcp` | Default MCP only |
 | `npm run deploy:dev` | Both dev Workers, storage first |
 | `npm run deploy:storage:dev` | Dev storage only |
 | `npm run deploy:mcp:dev` | Dev MCP only |
 
-All of these commands use the ignored deployment copies. Default commands
-explicitly select the top-level configuration (`--env ""`); dev commands select
-`--env dev`. Configure default values at the top level and dev values under
-`env.dev`. Do not pass `--env` to the aggregate npm scripts.
+Except `deploy:no-r2`, these commands use the ignored deployment copies. Default
+commands explicitly select the top-level configuration (`--env ""`); dev
+commands select `--env dev`. Configure default values at the top level and dev
+values under `env.dev`. Do not pass `--env` to the aggregate npm scripts.
 
 Wrangler does not inherit variables or resource bindings into named environments.
 Keep the complete dev `vars`, Durable Object bindings, backup R2 binding, and OAuth KV

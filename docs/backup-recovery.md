@@ -39,11 +39,14 @@ multicurrency card is hard to obtain — deploy without R2. Sync, the connection
 page and the optional MCP Worker need only Workers and Durable Objects; backups
 are the only R2-dependent feature.
 
-From a local checkout:
+From a local checkout, pass the same secrets file as the standard local deploy:
 
 ```sh
-npm run deploy:no-r2
+npm run deploy:no-r2 -- --secrets-file .dev.vars
 ```
+
+If `COUCHDB_PASSWORD` is already a Worker secret — including when you add it in
+the dashboard for Workers Builds — `npm run deploy:no-r2` alone is enough.
 
 For Workers Builds, use this as the **deploy command** instead of
 `npx wrangler deploy`:
@@ -67,7 +70,8 @@ objects are never deleted.
 With backups disabled:
 
 - sync and the connection page keep working normally;
-- manual backup and restore endpoints return HTTP `503`;
+- backup listing, creation, verification, download and restore return HTTP `503`;
+- `GET /_backup/status` still reports the (empty) backup state;
 - `/health` stays green but does not report backup age;
 - the backup CLI cannot create, verify or restore archives on the server.
 
