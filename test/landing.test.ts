@@ -23,8 +23,12 @@ describe('setup ticket', () => {
 
   it('rejects a tampered ticket', async () => {
     const ticket = await createSetupTicket(password, issuedAt);
-    const last = ticket.at(-1) === 'A' ? 'B' : 'A';
-    await expect(verifySetupTicket(`${ticket.slice(0, -1)}${last}`, password, issuedAt + 1)).resolves.toBe(false);
+    // Flip the second-to-last character: the final Base64url character carries
+    // padding bits, so changing it can decode to the same signature.
+    const last = ticket.at(-1);
+    const flipped = ticket.at(-2) === 'A' ? 'B' : 'A';
+    const tampered = `${ticket.slice(0, -2)}${flipped}${last}`;
+    await expect(verifySetupTicket(tampered, password, issuedAt + 1)).resolves.toBe(false);
   });
 });
 

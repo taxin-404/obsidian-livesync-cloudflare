@@ -132,7 +132,10 @@ describe('CouchDB compatibility surface', () => {
     }));
     expect(await afterClear.text()).toContain('name="password"');
 
-    const tampered = `${cookiePair.slice(0, -1)}${cookiePair.endsWith('A') ? 'B' : 'A'}`;
+    // Flip the second-to-last character: the final Base64url character carries
+    // padding bits, so changing it can decode to the same signature.
+    const flipped = cookiePair.at(-2) === 'A' ? 'B' : 'A';
+    const tampered = `${cookiePair.slice(0, -2)}${flipped}${cookiePair.at(-1)}`;
     const tamperedPage = await SELF.fetch(new Request('https://pouch.test/', {
       headers: { accept: 'text/html', cookie: tampered },
     }));
