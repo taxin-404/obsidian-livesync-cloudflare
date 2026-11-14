@@ -35,7 +35,7 @@ pushing new code can never invalidate a paired device.
 | Name | Required | Created by | Used for | If it is absent |
 | --- | --- | --- | --- | --- |
 | `COUCHDB_PASSWORD` | **yes** | you, a password generator, or `npm run rotate:password` | HTTP basic auth for every request from Obsidian | declared in `secrets.required`, so Wrangler reports it as missing; the Worker answers `503` instead of serving the vault |
-| `PAGE_PASSWORD` | no | you, only if you want a different password for the page | overrides the password that opens the connection-details page | the page falls back to `COUCHDB_PASSWORD` |
+| `PAGE_PASSWORD` | no | you, but do not set it — rotation cannot keep it in sync | overrides the password that opens the connection-details page | the page falls back to `COUCHDB_PASSWORD` |
 | `SETUP_URI` | no | `scripts/generate-setup-uri.sh`, the plugin, or `npm run rotate:password` | makes the page show a setup URI (and QR code) instead of raw connection fields | the page shows URL, database, username and password instead |
 | `SETUP_URI_PASSPHRASE` | no | generated together with the URI | unlocks `SETUP_URI` for the device being onboarded | together with a missing URI, the page falls back to raw fields |
 
@@ -43,10 +43,11 @@ pushing new code can never invalidate a paired device.
 
 ### Rules for these values
 
-- **`PAGE_PASSWORD` must be unset or exactly equal to `COUCHDB_PASSWORD`.** The
-  rotation tool opens the page with `COUCHDB_PASSWORD`; a different gate
-  password makes it fail with `the gate password must be COUCHDB_PASSWORD
-  (leave PAGE_PASSWORD unset or set it to the same value)`.
+- **`PAGE_PASSWORD` must stay unset for rotation.** The Worker supports a
+  separate gate password, but `rotate:password` does not rewrite it: a matching
+  value fails after the password changes, and a different value fails before
+  anything is pushed. Either way the page would demand a value the tool cannot
+  keep in sync. With it unset, the page uses `COUCHDB_PASSWORD`.
 - **The setup URI and its passphrase must come from the same source.** Mismatched
   halves produce a page whose URI cannot be decrypted.
 - **The setup URI embeds the password.** A URI generated for `A` will not pair a
@@ -164,15 +165,18 @@ vault passphrase, which cannot read the existing notes. Instead:
 - run `npm run rotate:password`, which regenerates all three values and updates
   the local vault in one verified step.
 
-### `PAGE_PASSWORD` — usually unnecessary
+### `PAGE_PASSWORD` — leave it unset
 
-Only needed when the page gate must be its own secret. The Worker accepts any
-value here, but `rotate:password` and `check:secrets` open the page with
-`COUCHDB_PASSWORD`, so a different gate password makes rotation refuse. Leave it
-unset (recommended) or set it to the same value:
+The Worker does support a separate password for the connection page
+(`PAGE_PASSWORD` overrides `COUCHDB_PASSWORD`), but the rotation tooling never
+rewrites it. If it equals the current password, rotation passes the preflight
+and then fails verification once the password changes; if it differs, rotation
+fails immediately. Either way the run rolls back.
+
+Leave it unset. If one is already set, delete it before rotating:
 
 ```sh
-printf '%s' '<the same COUCHDB_PASSWORD>' | npx wrangler secret put PAGE_PASSWORD --name obsidian-sync
+npx wrangler secret delete PAGE_PASSWORD --name obsidian-sync
 ```
 
 ## What a deploy does and does not touch

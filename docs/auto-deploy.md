@@ -286,9 +286,9 @@ than one: add `--account-id <id>` to `rotate:password`, or export
 `CLOUDFLARE_ACCOUNT_ID` first. Without it the preflight fails before anything is
 written. If the Worker is not named `live`, pass `--worker <name>`.
 
-Both commands assume the page gate uses `COUCHDB_PASSWORD`: leave
-`PAGE_PASSWORD` unset or set it to the same value, otherwise the page cannot be
-read and rotation refuses before touching the server.
+Both commands assume the page gate uses `COUCHDB_PASSWORD`: `PAGE_PASSWORD` must
+be unset, because rotation does not rewrite it and the page would keep demanding
+the old value.
 
 Local writes are staged first and renamed into place after verification. The
 verification retries for about ten seconds, because a Worker secret can take a

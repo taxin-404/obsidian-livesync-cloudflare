@@ -303,7 +303,7 @@ export async function rotate(options) {
       page = readSetupPage(html);
     } catch (error) {
       throw new Error(
-        `${error.message} — the gate password must be COUCHDB_PASSWORD (leave PAGE_PASSWORD unset or set it to the same value); if that password was lost, run with --rebuild`,
+        `${error.message} — the page must accept COUCHDB_PASSWORD (PAGE_PASSWORD blocks rotation: it is never rewritten, so unset it); if that password was lost, run with --rebuild`,
       );
     }
     try {

@@ -165,8 +165,8 @@ printing a secret. The complete credential matrix is in
 Cloudflare account, add
 `--account-id <id>` to `rotate:password` or export `CLOUDFLARE_ACCOUNT_ID`; if
 the Worker is not named `live`, add `--worker <name>`. Both commands require the
-gate to use `COUCHDB_PASSWORD`, so leave `PAGE_PASSWORD` unset or set it to the
-same value.
+page gate to be `COUCHDB_PASSWORD`, so `PAGE_PASSWORD` must be unset — rotation
+does not rewrite it.
 
 If the password was changed outside this tool — in the Cloudflare dashboard, for
 example — no device can authenticate and the page cannot be opened, so a normal
