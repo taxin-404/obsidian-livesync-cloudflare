@@ -42,7 +42,7 @@ function base64UrlEncode(bytes: Uint8Array): string {
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function base64UrlDecode(value: string): Uint8Array | null {
+function base64UrlDecode(value: string): Uint8Array<ArrayBuffer> | null {
   if (!/^[A-Za-z0-9_-]+$/.test(value)) return null;
   const padded = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
   try {
@@ -87,6 +87,48 @@ export async function verifySetupTicket(ticket: string, password: string, now = 
     signature,
     new TextEncoder().encode(`${version}.${expiresAt}.${nonce}`),
   );
+}
+
+const HTTP_SETUP_COOKIE = 'livesync_setup';
+const HTTPS_SETUP_COOKIE = '__Host-livesync_setup';
+
+function cookieName(request: Request): string {
+  return new URL(request.url).protocol === 'https:' ? HTTPS_SETUP_COOKIE : HTTP_SETUP_COOKIE;
+}
+
+function serializeCookie(request: Request, value: string, maxAgeSeconds: number): string {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  const expires = maxAgeSeconds === 0 ? '; Expires=Thu, 01 Jan 1970 00:00:00 GMT' : '';
+  return `${cookieName(request)}=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${expires}${secure}`;
+}
+
+function readSetupCookie(request: Request): string | null {
+  const header = request.headers.get('cookie');
+  if (!header) return null;
+  const name = cookieName(request);
+  for (const part of header.split(';')) {
+    const separator = part.indexOf('=');
+    if (separator === -1) continue;
+    if (part.slice(0, separator).trim() !== name) continue;
+    return part.slice(separator + 1).trim();
+  }
+  return null;
+}
+
+function pageHeaders(
+  { varyCookie = false, clearCookie }: { varyCookie?: boolean; clearCookie?: string } = {},
+): Headers {
+  const headers = new Headers({
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-robots-tag': 'noindex, nofollow',
+    'referrer-policy': 'no-referrer',
+    'x-frame-options': 'DENY',
+    'content-security-policy': "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  });
+  if (varyCookie) headers.set('vary', 'Cookie');
+  if (clearCookie) headers.append('set-cookie', clearCookie);
+  return headers;
 }
 
 function page(title: string, body: string): string {
@@ -141,7 +183,7 @@ function page(title: string, body: string): string {
 </html>`;
 }
 
-function gate(origin: string, error: string): Response {
+function gate(origin: string, error: string, clearCookie?: string): Response {
   const html = page(
     origin.replace(/^https?:\/\//, ''),
     `<h1>LiveSync</h1>
@@ -154,12 +196,7 @@ function gate(origin: string, error: string): Response {
   );
   return new Response(html, {
     status: error ? 401 : 200,
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-robots-tag': 'noindex, nofollow',
-      'referrer-policy': 'no-referrer',
-    },
+    headers: pageHeaders({ clearCookie }),
   });
 }
 
@@ -167,7 +204,7 @@ function row(id: string, label: string, value: string, stacked = false): string 
   return `<div class="row${stacked ? ' stack' : ''}"><dt>${label}</dt><dd id="${id}">${escapeHtml(value)}</dd><button data-copy="${id}">Copy</button></div>`;
 }
 
-function setup(origin: string, env: AppEnv): Response {
+function setup(origin: string, env: AppEnv, clearCookie?: string): Response {
   const setupUri = env.SETUP_URI;
   const setupPassphrase = env.SETUP_URI_PASSPHRASE;
   const rows = setupUri && setupPassphrase
@@ -191,15 +228,15 @@ function setup(origin: string, env: AppEnv): Response {
     const done = () => { button.textContent = 'Copied'; setTimeout(() => { button.textContent = 'Copy'; }, 1200); };
     if (navigator.clipboard) navigator.clipboard.writeText(value).then(done, () => {});
   });
+</script>
+<script>
+  addEventListener('pageshow', (event) => {
+    if (event.persisted) location.reload();
+  });
 </script>`,
   );
   return new Response(html, {
-    headers: {
-      'content-type': 'text/html; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-robots-tag': 'noindex, nofollow',
-      'referrer-policy': 'no-referrer',
-    },
+    headers: pageHeaders({ varyCookie: true, clearCookie }),
   });
 }
 
@@ -207,10 +244,12 @@ function setup(origin: string, env: AppEnv): Response {
  * Connection material for the people this deployment is shared with. Not part of
  * the CouchDB surface: browsers ask for text/html, LiveSync clients never do.
  *
- * The setup details are never served without a password; there is no session or
- * cookie, so every visit has to enter it again. PAGE_PASSWORD overrides the
- * gate, and COUCHDB_PASSWORD is the fallback so a deployment needs only the one
- * secret. If neither exists the page fails closed.
+ * The setup details are never served without a password. A correct POST sets a
+ * short-lived signed ticket cookie and redirects; the GET that follows serves the
+ * details once and clears the cookie, so refreshing, reopening, or coming back
+ * asks again. PAGE_PASSWORD overrides the gate, and COUCHDB_PASSWORD is the
+ * fallback so a deployment needs only the one secret. If neither exists the page
+ * fails closed.
  */
 export async function landingPage(request: Request, env: AppEnv): Promise<Response> {
   const origin = new URL(request.url).origin;
@@ -218,8 +257,26 @@ export async function landingPage(request: Request, env: AppEnv): Promise<Respon
   if (!expected) {
     return new Response('Not configured.', { status: 503, headers: { 'cache-control': 'no-store' } });
   }
-  if (request.method === 'GET') return gate(origin, '');
+  if (request.method === 'GET') {
+    const ticket = readSetupCookie(request);
+    if (ticket && await verifySetupTicket(ticket, expected)) {
+      return setup(origin, env, serializeCookie(request, '', 0));
+    }
+    return gate(origin, '', ticket ? serializeCookie(request, '', 0) : undefined);
+  }
   const submitted = new URLSearchParams(await request.text()).get('password') ?? '';
-  if (!(await passwordMatches(submitted, expected))) return gate(origin, 'Wrong password.');
-  return setup(origin, env);
+  if (!(await passwordMatches(submitted, expected))) {
+    return gate(origin, 'Wrong password.', readSetupCookie(request) ? serializeCookie(request, '', 0) : undefined);
+  }
+  const ticket = await createSetupTicket(expected);
+  return new Response(null, {
+    status: 303,
+    headers: {
+      location: '/',
+      'set-cookie': serializeCookie(request, ticket, SETUP_TICKET_MAX_AGE_MS / 1000),
+      'cache-control': 'no-store',
+      'referrer-policy': 'no-referrer',
+      'x-robots-tag': 'noindex, nofollow',
+    },
+  });
 }

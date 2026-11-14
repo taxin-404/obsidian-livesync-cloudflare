@@ -185,7 +185,9 @@ setup URI and its passphrase (or, when those secrets are not bound, the URL,
 database, username and password). To use a separate page password, set the
 `PAGE_PASSWORD` secret and keep the same value in
 `~/.config/obsidian-livesync/page-password` (mode 600); rotation leaves it
-unchanged. There is no session or cookie, so every visit asks again. If neither
+unchanged. The details are shown once per password entry: a short-lived ticket
+cookie is cleared as soon as the page is served, so refreshing, reopening the
+tab, or visiting again asks for the password again. If neither
 password exists the page returns 503 instead of exposing anything. Requests from the plugin, PouchDB or curl do not ask for HTML and
 still get the authenticated CouchDB surface.
 

@@ -6,6 +6,7 @@ import find from 'pouchdb-find';
 import mapreduce from 'pouchdb-mapreduce';
 import replication from 'pouchdb-replication';
 import { afterEach, describe, expect, it } from 'vitest';
+import { createSetupTicket } from '../src/landing';
 
 PouchDB.plugin(HttpPouch).plugin(find).plugin(mapreduce).plugin(replication);
 
@@ -71,17 +72,20 @@ describe('CouchDB compatibility surface', () => {
   });
 
   it('requires the page password before showing the setup details', async () => {
-    const form = await SELF.fetch(
-      new Request('https://pouch.test/', { headers: { accept: 'text/html,application/xhtml+xml' } }),
-    );
+    const form = await SELF.fetch(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html,application/xhtml+xml' },
+    }));
     expect(form.status).toBe(200);
     expect(form.headers.get('x-robots-tag')).toContain('noindex');
+    expect(form.headers.get('x-frame-options')).toBe('DENY');
+    expect(form.headers.get('content-security-policy')).toContain("frame-ancestors 'none'");
     const formHtml = await form.text();
     expect(formHtml).toContain('name="password"');
     expect(formHtml).not.toContain('obsidian://setuplivesync');
 
     const wrong = await SELF.fetch(new Request('https://pouch.test/', {
       method: 'POST',
+      redirect: 'manual',
       headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
       body: 'password=nope',
     }));
@@ -90,13 +94,56 @@ describe('CouchDB compatibility surface', () => {
 
     const ok = await SELF.fetch(new Request('https://pouch.test/', {
       method: 'POST',
+      redirect: 'manual',
       headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
       body: 'password=test-password',
     }));
-    expect(ok.status).toBe(200);
-    const html = await ok.text();
+    expect(ok.status).toBe(303);
+    expect(ok.headers.get('location')).toBe('/');
+    expect(ok.headers.get('cache-control')).toContain('no-store');
+    expect(await ok.text()).toBe('');
+
+    const setCookie = ok.headers.get('set-cookie') ?? '';
+    expect(setCookie).toContain('__Host-livesync_setup=');
+    expect(setCookie).toContain('Path=/');
+    expect(setCookie).toContain('HttpOnly');
+    expect(setCookie).toContain('SameSite=Strict');
+    expect(setCookie).toContain('Max-Age=60');
+    expect(setCookie).toContain('Secure');
+    expect(setCookie).not.toContain('Domain=');
+    const cookiePair = setCookie.split(';', 1)[0];
+
+    const setup = await SELF.fetch(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: cookiePair },
+    }));
+    expect(setup.status).toBe(200);
+    expect(setup.headers.get('cache-control')).toContain('no-store');
+    expect((setup.headers.get('vary') ?? '').toLowerCase()).toContain('cookie');
+    const html = await setup.text();
     expect(html).toContain('obsidian://setuplivesync?settings=test');
     expect(html).toContain('test-uri-passphrase');
+    expect(html).toContain("addEventListener('pageshow'");
+    const clear = setup.headers.get('set-cookie') ?? '';
+    expect(clear).toContain('__Host-livesync_setup=');
+    expect(clear).toContain('Max-Age=0');
+
+    const afterClear = await SELF.fetch(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html' },
+    }));
+    expect(await afterClear.text()).toContain('name="password"');
+
+    const tampered = `${cookiePair.slice(0, -1)}${cookiePair.endsWith('A') ? 'B' : 'A'}`;
+    const tamperedPage = await SELF.fetch(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: tampered },
+    }));
+    expect(await tamperedPage.text()).toContain('name="password"');
+    expect(tamperedPage.headers.get('set-cookie')).toContain('Max-Age=0');
+
+    const expiredTicket = await createSetupTicket('test-password', Date.now() - 61_000);
+    const expiredPage = await SELF.fetch(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: `__Host-livesync_setup=${expiredTicket}` },
+    }));
+    expect(await expiredPage.text()).toContain('name="password"');
   });
 
   it('supports the PouchDB HTTP document, bulk, changes, and attachment APIs', async () => {
