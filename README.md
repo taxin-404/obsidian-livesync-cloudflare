@@ -32,7 +32,7 @@ Based on [`robince/cloudflare-obsidian-livesync-mcp`](https://github.com/robince
 ## How it works
 
 ```
-Obsidian (LiveSync)  ──HTTPS──>  Worker (your-worker-name)
+Obsidian (LiveSync)  ──HTTPS──>  Worker (live)
                                    │  CouchDB subset: _bulk_docs, _revs_diff,
                                    │  _changes (longpoll/continuous), _local, ...
                                    ▼
@@ -48,8 +48,8 @@ One Durable Object per database (one vault). The plugin's E2EE passphrase encryp
 
 Pick any **Worker name** you like (for example `live` or `my-vault-sync`): you
 choose it yourself in Cloudflare the first time, and it must match `name` in
-`wrangler.jsonc` — which ships with the placeholder `your-worker-name` for you to
-replace. Nothing else depends on the name.
+`wrangler.jsonc` — which ships with `live` as the starting name. Replace it with
+your own if you prefer; nothing else depends on the name.
 
 **First time?** The **Deploy to Cloudflare** button in
 [DEPLOY.md](DEPLOY.md#deploy-with-the-cloudflare-button) is the shortest path:
@@ -62,7 +62,7 @@ Use this when the repository is already in your GitHub account and you want
 every push to `main` to build and deploy.
 
 1. Fork this repository to your own GitHub account, and set `name` in the fork's
-   `wrangler.jsonc` to the Worker name you chose (replacing `your-worker-name`).
+   `wrangler.jsonc` to the Worker name you chose (replacing `live`).
 2. Dashboard → **Workers & Pages** → your Worker (the name you chose) → **Settings → Builds → Connect**
    (for a fresh install: **Create application → Continue with GitHub**).
 3. Repository: **your fork**, branch `main`.
@@ -127,7 +127,7 @@ variable: `NODE_VERSION=24` if you do not want to rely on `.nvmrc`. Details:
 ### Option B — Local deploy
 
 Set `name` in `wrangler.jsonc` to the Worker name you chose (replacing
-`your-worker-name`) before deploying.
+`live`) before deploying.
 
 ```sh
 git clone https://github.com/taxin-404/obsidian-livesync-cloudflare.git
@@ -321,11 +321,14 @@ finish or reset that rebuild first, then unlock.
 
 ## Operations
 
+The commands below use `live`, the name in `wrangler.jsonc`; substitute your own
+Worker name if you changed it.
+
 ```sh
-npx wrangler tail your-worker-name          # live logs
+npx wrangler tail live                      # live logs
 npm run rotate:password -- --vault ~/Documents/notes   # rotate every dependent secret
 npm run check:secrets -- --vault ~/Documents/notes     # find the link that drifted
-npx wrangler delete your-worker-name        # tear down Worker
+npx wrangler delete live                    # tear down Worker
 npx wrangler r2 bucket delete obsidian-sync-backups
 ```
 

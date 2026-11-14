@@ -96,7 +96,7 @@ Bind the existing Durable Object class from another Worker:
       {
         "name": "POUCH_DATABASES",
         "class_name": "PouchDatabase",
-        "script_name": "your-worker-name"
+        "script_name": "live"
       }
     ]
   }

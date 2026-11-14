@@ -20,7 +20,7 @@ Cloudflare Workers Builds
                               checks R2 and adjusts backups)
         │
         ▼
-Worker your-worker-name  +  Durable Object  +  R2 binding
+Worker live  +  Durable Object  +  R2 binding
 ```
 
 The deploy command wraps `wrangler deploy` and also checks whether the account
@@ -43,7 +43,7 @@ deploy without backups, add `--require-r2`. See
   access during the connect flow (GitHub → Settings → Applications →
   Cloudflare Workers → Configure → Repository access).
 - `wrangler.jsonc` is at the repository root and its `"name"` is the Worker name
-  you chose (the file ships with the placeholder `your-worker-name`).
+  you chose. The file ships with `live`; replace it if you chose another name.
 
 ### The name must match
 
@@ -176,9 +176,9 @@ COUCHDB_PASSWORD=...
 ### The `dev` environment
 
 `wrangler.jsonc` also defines an optional `dev` environment that deploys a
-separate Worker named `your-worker-name-dev` (replace the placeholder). It has its
-own database and needs its own `COUCHDB_PASSWORD`; it is not used by Workers
-Builds, which targets the top-level storage Worker.
+separate Worker named `live-dev`. It has its own database and needs its own
+`COUCHDB_PASSWORD`; it is not used by Workers Builds, which targets the top-level
+storage Worker.
 
 ### Test-only names you will see in the code
 
@@ -198,9 +198,9 @@ The build log ends with something like:
 
 ```
 Total Upload: ... KiB / gzip: ... KiB
-Uploaded your-worker-name (x.xx sec)
-Deployed your-worker-name triggers
-  https://your-worker-name.<account-subdomain>.workers.dev
+Uploaded live (x.xx sec)
+Deployed live triggers
+  https://live.<account-subdomain>.workers.dev
 ```
 
 The first build deploys the same code that is running now, so Obsidian keeps
@@ -208,14 +208,16 @@ working. The `COUCHDB_PASSWORD` Worker secret is left in place.
 
 ## Verify
 
+The examples below use `live`; substitute your Worker name if you chose another.
+
 ```sh
-curl -u admin:'YOUR_PASSWORD' https://your-worker-name.<account-subdomain>.workers.dev/vault
+curl -u admin:'YOUR_PASSWORD' https://live.<account-subdomain>.workers.dev/vault
 ```
 
 Expect JSON with `"doc_count"` and `"update_seq"`. For live request logs:
 
 ```sh
-npx wrangler tail your-worker-name
+npx wrangler tail live
 ```
 
 An edit in Obsidian should produce `POST /vault/_revs_diff 200`,
@@ -238,7 +240,7 @@ Either redeploy an older commit from the dashboard (**Deployments → … → Ro
 back**), or from a machine with Wrangler logged in:
 
 ```sh
-npx wrangler rollback your-worker-name
+npx wrangler rollback live
 ```
 
 Neither touches the R2 backups.

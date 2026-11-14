@@ -6,9 +6,10 @@ OAuth settings are configured.
 
 ## First-time checklist
 
-1. Choose a Worker name — any name works, and there is no default.
+1. Choose a Worker name. Any name works; this repo ships with `live` as the
+   starting name.
 2. Make sure that name is in `wrangler.jsonc` `"name"`: the button writes it
-   there, and a local or fork deploy replaces `your-worker-name` with it.
+   there, and a local or fork deploy replaces `live` with it.
 3. Choose `COUCHDB_PASSWORD`; save it for Obsidian.
 4. Deploy with the button or the local command below.
 5. Connect Obsidian LiveSync to the printed `workers.dev` URL.
@@ -24,7 +25,7 @@ Use Wrangler to deploy from a local checkout:
    git clone https://github.com/taxin-404/obsidian-livesync-cloudflare.git
    cd obsidian-livesync-cloudflare
    npm ci
-   # edit "name" in wrangler.jsonc (replace your-worker-name)
+   # edit "name" in wrangler.jsonc (replace live)
    ```
 
 2. Copy the secret example and replace the password placeholder with a strong,
@@ -205,10 +206,10 @@ Git-based build work; the ignored `wrangler.deploy.jsonc` copies are for local
 
 ## Default and development deployments
 
-The storage Worker ships with the placeholder name `your-worker-name`, which you
-replace with the name you choose; the MCP Worker is `obsidian-mcp`. Each
-configuration also defines an optional `env.dev` (`your-worker-name-dev` and
-`obsidian-mcp-dev`). One checkout supports both.
+The storage Worker ships with the name `live`; replace it with your own name if
+you prefer. The MCP Worker is `obsidian-mcp`. Each configuration also defines an
+optional `env.dev` (`live-dev` and `obsidian-mcp-dev`). One checkout supports
+both.
 
 | Command | Target |
 | --- | --- |

@@ -110,6 +110,9 @@ R2 backups are unreadable by design.
 
 ## How to make each secret
 
+The commands below use `live`, the Worker name in `wrangler.jsonc`; substitute
+your own name if you chose another.
+
 ### `COUCHDB_PASSWORD` — choose one
 
 Any long random string works. It travels in an HTTP basic-auth header, so keep it
@@ -117,8 +120,8 @@ to URL-safe characters (letters, digits, `-`, `_`); no quotes or spaces.
 
 ```sh
 openssl rand -hex 16
-printf '%s' '<the-value>' | npx wrangler secret put COUCHDB_PASSWORD --name your-worker-name
-npx wrangler secret list --name your-worker-name   # names only; values cannot be read back
+printf '%s' '<the-value>' | npx wrangler secret put COUCHDB_PASSWORD --name live
+npx wrangler secret list --name live   # names only; values cannot be read back
 ```
 
 For a local deploy, put it in `.dev.vars` instead and run
@@ -149,12 +152,12 @@ Publish the result so the connection page becomes a QR code. Use the same
 password the URI was generated with — it is embedded in the URI:
 
 ```sh
-sed -n 's/^uri=//p' .setup-uri | npx wrangler secret put SETUP_URI --name your-worker-name
-sed -n 's/^uri_passphrase=//p' .setup-uri | npx wrangler secret put SETUP_URI_PASSPHRASE --name your-worker-name
+sed -n 's/^uri=//p' .setup-uri | npx wrangler secret put SETUP_URI --name live
+sed -n 's/^uri_passphrase=//p' .setup-uri | npx wrangler secret put SETUP_URI_PASSPHRASE --name live
 ```
 
 `--name` is your Worker's name — the same one you set in `wrangler.jsonc`
-(`your-worker-name` in the committed file, or whatever you chose). Wrangler needs
+(`live` in the committed file, or whatever you chose). Wrangler needs
 `npx wrangler login` once.
 
 Then pair the first device from the page (or from `.setup-uri`) using
@@ -177,7 +180,7 @@ drift-check tools can open the page:
 
 ```sh
 openssl rand -hex 16
-printf '%s' '<the-value>' | npx wrangler secret put PAGE_PASSWORD --name your-worker-name
+printf '%s' '<the-value>' | npx wrangler secret put PAGE_PASSWORD --name live
 umask 077 && printf '%s\n' '<the-value>' > ~/.config/obsidian-livesync/page-password
 ```
 
