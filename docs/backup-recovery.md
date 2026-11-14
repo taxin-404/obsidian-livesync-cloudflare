@@ -33,18 +33,62 @@ backup and restore operations are unavailable.
 
 ### Deploy without R2
 
-Set `vars.BACKUP_ENABLED` to the string `"false"` in the ignored
-`wrangler.deploy.jsonc`, then run `npm run deploy:storage`. For dev, set
-`env.dev.vars.BACKUP_ENABLED` and run `npm run deploy:storage:dev`.
+R2 requires an enabled billing profile. If Cloudflare asks for a payment card
+you cannot provide — for example as a student in a country where a
+multicurrency card is hard to obtain — deploy without R2. Sync, the connection
+page and the optional MCP Worker need only Workers and Durable Objects; backups
+are the only R2-dependent feature.
+
+From a local checkout:
+
+```sh
+npm run deploy:no-r2
+```
+
+For Workers Builds, use this as the **deploy command** instead of
+`npx wrangler deploy`:
+
+```sh
+node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2
+```
+
+For the dev environment:
+
+```sh
+node scripts/deploy-storage.mjs wrangler.jsonc dev --no-r2
+```
+
+The command builds a temporary configuration that forces
+`BACKUP_ENABLED="false"`, removes only the `BACKUP_BUCKET` binding, and sets
+`crons` to `[]`. `wrangler.jsonc` itself is unchanged, other R2 bindings
+survive, and the temporary file is deleted after the deploy. Existing bucket
+objects are never deleted.
+
+With backups disabled:
+
+- sync and the connection page keep working normally;
+- manual backup and restore endpoints return HTTP `503`;
+- `/health` stays green but does not report backup age;
+- the backup CLI cannot create, verify or restore archives on the server.
+
+Keep your own exports — for example a periodic copy of the vault folder or
+Obsidian's file recovery — while R2 is disabled.
+
+To enable backups later, activate R2 and run `npm run deploy`. The existing
+bucket and its objects are reused as long as `bucket_name` stays the same.
+
+#### Custom deployment config
+
+If you deploy from an ignored `wrangler.deploy.jsonc`, set
+`vars.BACKUP_ENABLED` to the string `"false"` there and run
+`npm run deploy:storage`. For dev, set `env.dev.vars.BACKUP_ENABLED` and run
+`npm run deploy:storage:dev`.
 
 The deployment script omits `BACKUP_BUCKET` and clears the backup cron schedule
 in a temporary configuration. Your saved binding and schedule stay intact.
 Set the flag back to `"true"` and redeploy to enable backups again; activate R2
 first if necessary. Existing bucket contents are not deleted when disabling
 backups. Keep the same bucket name when re-enabling to retain access to them.
-
-Sync and MCP work without R2. Manual R2 backup and restore operations require
-the binding, so keep independent backups while it is disabled.
 
 Use the npm deployment commands: calling `wrangler deploy` directly bypasses
 this configuration step. Changing the flag only in the Cloudflare dashboard

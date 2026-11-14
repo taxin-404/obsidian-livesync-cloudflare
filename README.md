@@ -56,6 +56,12 @@ and the build service manages its own deploy token. The dashboard Worker name
 Builds requires. Existing Worker secrets, including `COUCHDB_PASSWORD`, are not
 touched by a deploy.
 
+If the account cannot enable R2 because a payment card is unavailable, set the
+deploy command to
+`node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` instead. Sync keeps
+working; scheduled and manual backups stay off. See
+[docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
+
 Full guide, including connecting an existing Worker, rollback, and
 troubleshooting: **[docs/auto-deploy.md](docs/auto-deploy.md)**.
 
@@ -109,7 +115,10 @@ npm run deploy -- --secrets-file .dev.vars
 ```
 
 `npm run deploy` publishes the storage Worker only, from `wrangler.jsonc` —
-no extra config file and no API token. (`npm run deploy:storage` is the
+no extra config file and no API token. If R2 cannot be enabled, use
+`npm run deploy:no-r2` instead; sync still works and backups stay off. See
+[docs/backup-recovery.md#deploy-without-r2](docs/backup-recovery.md#deploy-without-r2).
+(`npm run deploy:storage` is the
 upstream variant that reads a local, gitignored `wrangler.deploy.jsonc`, and
 `deploy:mcp` publishes the MCP Worker we do not use.)
 
@@ -293,7 +302,7 @@ npx wrangler delete obsidian-sync        # tear down Worker
 npx wrangler r2 bucket delete obsidian-sync-backups
 ```
 
-Changing `BACKUP_ENABLED` to `"false"` and redeploying with the deploy script removes the R2 binding and cron; sync keeps working (keep your own backups).
+Changing `BACKUP_ENABLED` to `"false"` and redeploying with the deploy script removes the R2 binding and cron; sync keeps working (keep your own backups). Without a custom config, `npm run deploy:no-r2` does the same thing. See [deploy without R2](docs/backup-recovery.md#deploy-without-r2).
 
 ### Where the database runs
 

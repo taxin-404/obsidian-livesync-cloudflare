@@ -17,7 +17,8 @@ git push origin main
 Cloudflare Workers Builds
   1. npm ci                  (Cloudflare installs dependencies)
   2. npm run check:storage   (type-check, optional build command)
-  3. npx wrangler deploy     (deploy command, uses wrangler.jsonc)
+  3. npx wrangler deploy     (deploy command, uses wrangler.jsonc;
+                              no-R2 accounts use the command below)
         │
         ▼
 Worker obsidian-sync  +  Durable Object  +  R2 binding
@@ -26,6 +27,13 @@ Worker obsidian-sync  +  Durable Object  +  R2 binding
 The deploy command is the same `wrangler deploy` you would run locally; the
 build service supplies the authentication. The Worker's existing secrets are
 not removed or rewritten by a deploy.
+
+If the account cannot enable R2 (Cloudflare requires a billing profile with an
+accepted card), use
+`node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2` as the deploy
+command. It deploys the same Worker without the R2 binding and with backups
+off; sync keeps working. See
+[deploy without R2](backup-recovery.md#deploy-without-r2).
 
 ## Prerequisites
 
@@ -67,7 +75,7 @@ or you will start with an empty database and a different URL.
    | Field | Value |
    | --- | --- |
    | Build command | `npm run check:storage` |
-   | Deploy command | `npx wrangler deploy` |
+   | Deploy command | `npx wrangler deploy` (no R2: see below) |
    | Root directory | `/` |
    | Preview builds | off |
 
@@ -82,7 +90,10 @@ Create application → Continue with GitHub**; the build settings are the same.
   before it can break the live Worker. Leave the field empty if you prefer a
   pure deploy.
 - **`npx wrangler deploy`** reads `wrangler.jsonc`, which already names the
-  Worker, its Durable Object class, the R2 binding, and `crons: []`.
+  Worker, its Durable Object class, the R2 binding, and `crons: []`. Accounts
+  without R2 replace it with
+  `node scripts/deploy-storage.mjs wrangler.jsonc "" --no-r2`, which builds the
+  same deployment without the R2 binding.
 - **No `npm ci` in the build command** — Cloudflare runs it automatically before
   the build.
 - **Node 24** comes from the committed `.nvmrc`; Workers Builds reads it. If you
