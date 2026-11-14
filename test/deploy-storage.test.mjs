@@ -31,3 +31,29 @@ test('backup deployment flag preserves enabled configs and strips resources only
     assert.throws(() => deploymentConfig(JSON.stringify(source)), /Set BACKUP_ENABLED/);
   }
 });
+
+test('no-R2 deployment forces backups off and strips only the backup binding', () => {
+  for (const environment of ['', 'dev']) {
+    const source = structuredClone(template);
+    const selected = environment ? source.env[environment] : source;
+    selected.r2_buckets = [...(selected.r2_buckets ?? []), { binding: 'OTHER_BUCKET', bucket_name: 'keep-me' }];
+    const result = deploymentConfig(JSON.stringify(source), environment, { noR2: true });
+    const expected = structuredClone(source);
+    const target = environment ? expected.env[environment] : expected;
+    target.vars.BACKUP_ENABLED = 'false';
+    target.r2_buckets = target.r2_buckets.filter((bucket) => bucket.binding !== 'BACKUP_BUCKET');
+    target.triggers = { ...target.triggers, crons: [] };
+    assert.deepEqual(result, expected);
+    assert.equal(selected.vars.BACKUP_ENABLED, 'true', 'the parsed source is not mutated');
+  }
+});
+
+test('no-R2 deployment ignores a missing or invalid BACKUP_ENABLED value', () => {
+  for (const value of [undefined, false, 'FALSE']) {
+    const source = structuredClone(template);
+    if (value === undefined) delete source.vars.BACKUP_ENABLED;
+    else source.vars.BACKUP_ENABLED = value;
+    const result = deploymentConfig(JSON.stringify(source), '', { noR2: true });
+    assert.equal(result.vars.BACKUP_ENABLED, 'false');
+  }
+});

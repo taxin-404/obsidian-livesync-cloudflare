@@ -6,16 +6,17 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-export function deploymentConfig(text, environment = '') {
+export function deploymentConfig(text, environment = '', { noR2 = false } = {}) {
   const { config, error } = ts.parseConfigFileTextToJson('wrangler.jsonc', text);
   if (error) throw new Error(ts.flattenDiagnosticMessageText(error.messageText, '\n'));
   const selected = environment ? config.env?.[environment] : config;
   if (!selected) throw new Error(`Missing deployment environment: ${environment}`);
   const enabled = selected.vars?.BACKUP_ENABLED;
-  if (enabled !== 'true' && enabled !== 'false') {
+  if (!noR2 && enabled !== 'true' && enabled !== 'false') {
     throw new Error('Set BACKUP_ENABLED to the string "true" or "false" in the selected configuration.');
   }
-  if (enabled === 'true') return null;
+  if (!noR2 && enabled === 'true') return null;
+  selected.vars = { ...(selected.vars ?? {}), BACKUP_ENABLED: 'false' };
   selected.r2_buckets = (selected.r2_buckets ?? []).filter(bucket => bucket.binding !== 'BACKUP_BUCKET');
   // An empty list removes deployed cron triggers; omitting it leaves them running.
   selected.triggers = { ...selected.triggers, crons: [] };
