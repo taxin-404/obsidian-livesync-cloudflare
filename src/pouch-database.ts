@@ -237,6 +237,7 @@ export class PouchDatabase extends DurableObject<Env> {
 
   async restoreBackup(target: string, source: string, id: string, restart = false) {
     if (!DATABASE_NAME.test(target) || target === source) fail('Restore requires a fresh database name');
+    if (!this.env.BACKUP_BUCKET) fail('Backup bucket is not configured', 503);
     if (this.restoreActive || this.backupActive || this.activeSemanticWrites) fail('Target busy', 409);
     if (this.dbName && !this.meta('restore_state')) fail('Target database already exists', 409);
     if (this.dbName && this.dbName !== target) fail('Target identity mismatch', 409);

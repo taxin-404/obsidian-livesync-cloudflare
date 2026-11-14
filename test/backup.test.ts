@@ -401,3 +401,29 @@ describe('backup health', () => {
     await env.BACKUP_BUCKET.delete(`${prefix('vault')}${inProgress}/000000.jsonl.gz`);
   });
 });
+
+describe('backup routes without a bucket', () => {
+  it('answers backup and restore operations with a deliberate 503', async () => {
+    const withoutBucket = { ...env, BACKUP_BUCKET: undefined } as unknown as typeof env;
+    const routes = [
+      ['/_backup', 'GET'],
+      ['/_backup/status', 'GET'],
+      ['/_backup/example/manifest.json', 'GET'],
+      ['/_backup/example/verify', 'POST'],
+      ['/_backup/restore', 'POST'],
+    ] as const;
+    for (const [path, method] of routes) {
+      const response = await worker.fetch(new Request(`https://local${path}`, {
+        method,
+        headers: { authorization: `Basic ${btoa('admin:test-password')}`, 'content-type': 'application/json' },
+        body: method === 'POST' ? '{"target":"restored","id":"example"}' : undefined,
+      }), withoutBucket);
+      if (path === '/_backup/status') {
+        expect(response.status, path).toBe(200);
+        continue;
+      }
+      expect(response.status, path).toBe(503);
+      expect(response.headers.get('retry-after'), path).toBe('60');
+    }
+  });
+});

@@ -10,9 +10,10 @@ export async function backupRoute(request: Request, env: Env): Promise<Response>
     const database = url.searchParams.get('database') ?? env.BACKUP_DATABASE;
     if (!DATABASE_NAME.test(database)) fail('Invalid database name');
     const stub = env.POUCH_DATABASES.getByName(database, { locationHint: DO_LOCATION_HINT });
+    if (parts[0] === 'status' && parts.length === 1 && request.method === 'GET') return json(await stub.backupStatus());
+    if (!env.BACKUP_BUCKET) fail('Backup bucket is not configured', 503);
     if (parts.length === 0 && request.method === 'GET') return json(await listBackups(env.BACKUP_BUCKET, database));
     if (parts.length === 0 && request.method === 'POST') return json(await stub.createBackup(database));
-    if (parts[0] === 'status' && parts.length === 1 && request.method === 'GET') return json(await stub.backupStatus());
     if (parts[0] === 'restore' && parts.length === 1 && request.method === 'POST') {
       if (Number(request.headers.get('content-length')) > 4096) fail('Restore request too large');
       const body = new TextDecoder().decode(await boundedBytes(request.body, 4096));

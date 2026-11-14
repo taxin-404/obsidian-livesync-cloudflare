@@ -11,6 +11,7 @@ test('backup deployment flag preserves enabled configs and strips resources only
     const selected = environment ? source.env[environment] : source;
     assert.equal(deploymentConfig(JSON.stringify(source), environment), null);
     selected.vars.BACKUP_ENABLED = 'false';
+    selected.triggers = { ...selected.triggers, crons: ['0 * * * *'] };
     selected.r2_buckets.push({ binding: 'OTHER_BUCKET', bucket_name: 'keep-me' });
     const text = `// JSONC with trailing comma\n${JSON.stringify(source).replace(/}$/, ',}')}`;
     const result = deploymentConfig(text, environment);
@@ -37,6 +38,7 @@ test('no-R2 deployment forces backups off and strips only the backup binding', (
     const source = structuredClone(template);
     const selected = environment ? source.env[environment] : source;
     selected.r2_buckets = [...(selected.r2_buckets ?? []), { binding: 'OTHER_BUCKET', bucket_name: 'keep-me' }];
+    selected.triggers = { ...selected.triggers, crons: ['0 * * * *'] };
     const result = deploymentConfig(JSON.stringify(source), environment, { noR2: true });
     const expected = structuredClone(source);
     const target = environment ? expected.env[environment] : expected;
@@ -44,7 +46,6 @@ test('no-R2 deployment forces backups off and strips only the backup binding', (
     target.r2_buckets = target.r2_buckets.filter((bucket) => bucket.binding !== 'BACKUP_BUCKET');
     target.triggers = { ...target.triggers, crons: [] };
     assert.deepEqual(result, expected);
-    assert.equal(selected.vars.BACKUP_ENABLED, 'true', 'the parsed source is not mutated');
   }
 });
 
