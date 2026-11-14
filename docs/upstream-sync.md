@@ -82,7 +82,7 @@ Start from the repository, not from the diff tool:
 - [ ] Any new Durable Object `migrations` tag is copied into `wrangler.jsonc`.
 - [ ] The alarm backup patch in `src/pouch-database.ts` still applies, or was
       re-applied by hand.
-- [ ] `wrangler.jsonc` still has `name: obsidian-sync`, `crons: []`, the R2
+- [ ] `wrangler.jsonc` still has `name: live`, `crons: []`, the R2
       binding, and the `BACKUP_*` values.
 - [ ] No upstream deploy script or `CLOUDFLARE_API_TOKEN` step was introduced.
 - [ ] `npm run check:storage` passes and the suites for the touched area pass.
