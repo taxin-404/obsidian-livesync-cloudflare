@@ -49,4 +49,29 @@ describe('landing page', () => {
     }), {} as AppEnv);
     expect(missing.status).toBe(503);
   });
+
+  it('shows the gate for a malformed cookie and clears it', async () => {
+    const env = { COUCHDB_PASSWORD: 'test-password' } as AppEnv;
+    const page = await landingPage(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: '__Host-livesync_setup=not-a-ticket' },
+    }), env);
+    const html = await page.text();
+    expect(html).toContain('name="password"');
+    expect(html).not.toContain('obsidian://setuplivesync');
+    expect(page.headers.get('set-cookie')).toContain('Max-Age=0');
+  });
+
+  it('shows the gate when a malformed cookie precedes a valid duplicate', async () => {
+    const env = { COUCHDB_PASSWORD: 'test-password' } as AppEnv;
+    const valid = await createSetupTicket('test-password');
+    const page = await landingPage(new Request('https://pouch.test/', {
+      headers: {
+        accept: 'text/html',
+        cookie: `__Host-livesync_setup=not-a-ticket; __Host-livesync_setup=${valid}`,
+      },
+    }), env);
+    const html = await page.text();
+    expect(html).toContain('name="password"');
+    expect(html).not.toContain('obsidian://setuplivesync');
+  });
 });

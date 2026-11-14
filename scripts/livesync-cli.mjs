@@ -54,6 +54,35 @@ export function isObsidianRunning() {
   return OBSIDIAN_PROCESSES.some((args) => spawnSync('pgrep', args, { stdio: 'ignore' }).status === 0);
 }
 
+/**
+ * Reads the gated setup page. The page answers a correct password with a 303
+ * and a one-view ticket cookie, so a plain fetch would follow the redirect
+ * without the cookie and land back on the gate. Follow the handshake by hand:
+ * post the password, then fetch once with the ticket. A response that is not a
+ * 303 is returned as-is, which keeps an older deployment working.
+ */
+export async function fetchSetupPage(url, password, { fetchImpl = fetch } = {}) {
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    redirect: 'manual',
+    headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ password }).toString(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (response.status !== 303) return response.text();
+
+  const setCookies = typeof response.headers.getSetCookie === 'function'
+    ? response.headers.getSetCookie()
+    : [response.headers.get('set-cookie')].filter(Boolean);
+  const cookie = (setCookies[0] ?? '').split(';', 1)[0].trim();
+  const location = response.headers.get('location') ?? '/';
+  const setup = await fetchImpl(new URL(location, url).toString(), {
+    headers: { accept: 'text/html', ...(cookie ? { cookie } : {}) },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  return setup.text();
+}
+
 export function createAdapters(vaultDir) {
   let cached;
   const vault = () => (cached ??= readVault(vaultDir));
@@ -64,13 +93,7 @@ export function createAdapters(vaultDir) {
       return isObsidianRunning();
     },
     async fetchPage(password) {
-      const response = await fetch(`${await origin()}/`, {
-        method: 'POST',
-        headers: { accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ password }).toString(),
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      });
-      return response.text();
+      return fetchSetupPage(`${await origin()}/`, password);
     },
     async fetchAuth(password) {
       const state = await vault();
