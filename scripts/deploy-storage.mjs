@@ -23,11 +23,24 @@ export function deploymentConfig(text, environment = '', { noR2 = false } = {}) 
   return config;
 }
 
-export function deployStorage([configPath, environment, ...args]) {
-  if (!configPath || environment === undefined) throw new Error('Usage: deploy-storage.mjs CONFIG ENV [Wrangler deploy options]');
+export function deployArgs(argv) {
+  const [configPath, environment, ...args] = argv;
+  if (!configPath || environment === undefined) {
+    throw new Error('Usage: deploy-storage.mjs CONFIG ENV [--no-r2] [Wrangler deploy options]');
+  }
   if (args.some(arg => /^(--config|--env|--var|-c|-e)(=|$)/.test(arg))) {
     throw new Error('Set configuration, environment and variables in the deployment config, not extra Wrangler options.');
   }
+  return {
+    configPath,
+    environment,
+    noR2: args.includes('--no-r2'),
+    wranglerArgs: args.filter(arg => arg !== '--no-r2'),
+  };
+}
+
+export function deployStorage(argv) {
+  const { configPath, environment, noR2, wranglerArgs } = deployArgs(argv);
   const source = resolve(configPath);
   let text;
   try {
@@ -40,14 +53,14 @@ export function deployStorage([configPath, environment, ...args]) {
     }
     throw error;
   }
-  const config = deploymentConfig(text, environment);
+  const config = deploymentConfig(text, environment, { noR2 });
   // Keep the copy beside the original so relative entrypoints and secret files still resolve.
   const temporary = config ? join(dirname(source), `.wrangler-deploy-${randomUUID()}.jsonc`) : null;
   const require = createRequire(import.meta.url);
   const wrangler = join(dirname(require.resolve('wrangler/package.json')), 'bin/wrangler.js');
   try {
     if (temporary) writeFileSync(temporary, JSON.stringify(config, null, 2), { mode: 0o600, flag: 'wx' });
-    const result = spawnSync(process.execPath, [wrangler, 'deploy', '--config', temporary ?? source, '--env', environment, ...args], { stdio: 'inherit' });
+    const result = spawnSync(process.execPath, [wrangler, 'deploy', '--config', temporary ?? source, '--env', environment, ...wranglerArgs], { stdio: 'inherit' });
     if (result.error) throw result.error;
     return result.status ?? 1;
   } finally {

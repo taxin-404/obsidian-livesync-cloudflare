@@ -56,6 +56,7 @@
     "types:check:storage": "wrangler types --strict-vars=false --check",
     "deploy": "node scripts/deploy-storage.mjs wrangler.jsonc \"\"",
     "deploy:storage": "node scripts/deploy-storage.mjs wrangler.deploy.jsonc \"\"",
+    "deploy:no-r2": "node scripts/deploy-storage.mjs wrangler.jsonc \"\" --no-r2",
     "deploy:mcp": "wrangler deploy --config apps/cloudflare-obsidian-mcp/wrangler.deploy.jsonc --env \"\"",
     "dry-run": "npm run dry-run:storage && npm run dry-run --workspaces --if-present",
     "dry-run:storage": "node scripts/deploy-storage.mjs wrangler.jsonc \"\" --dry-run --outdir dist/storage",

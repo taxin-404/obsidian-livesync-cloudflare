@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import { deploymentConfig } from '../scripts/deploy-storage.mjs';
+import { deployArgs, deploymentConfig } from '../scripts/deploy-storage.mjs';
 
 const template = JSON.parse(readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8'));
 
@@ -56,4 +56,21 @@ test('no-R2 deployment ignores a missing or invalid BACKUP_ENABLED value', () =>
     const result = deploymentConfig(JSON.stringify(source), '', { noR2: true });
     assert.equal(result.vars.BACKUP_ENABLED, 'false');
   }
+});
+
+test('parses --no-r2 out of the Wrangler arguments', () => {
+  assert.deepEqual(deployArgs(['wrangler.jsonc', '', '--no-r2', '--dry-run']), {
+    configPath: 'wrangler.jsonc',
+    environment: '',
+    noR2: true,
+    wranglerArgs: ['--dry-run'],
+  });
+  assert.deepEqual(deployArgs(['wrangler.jsonc', 'dev']), {
+    configPath: 'wrangler.jsonc',
+    environment: 'dev',
+    noR2: false,
+    wranglerArgs: [],
+  });
+  assert.throws(() => deployArgs(['wrangler.jsonc', '', '--no-r2', '--var', 'x=1']), /Set configuration/);
+  assert.throws(() => deployArgs(['wrangler.jsonc']), /Usage:/);
 });
