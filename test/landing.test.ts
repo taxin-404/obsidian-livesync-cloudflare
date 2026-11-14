@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { createSetupTicket, landingPage, verifySetupTicket } from '../src/landing';
+import { decodeQrSvg } from './qr-scan';
 import type { AppEnv } from '../src/types';
 
 const password = 'test-password';
 const issuedAt = 1_800_000_000_000;
+
+function decodePageQr(html: string): string | null {
+  const svg = /<svg[\s\S]*?<\/svg>/.exec(html)?.[0];
+  return svg ? decodeQrSvg(svg) : null;
+}
 
 describe('setup ticket', () => {
   it('accepts a fresh ticket', async () => {
@@ -77,5 +83,52 @@ describe('landing page', () => {
     const html = await page.text();
     expect(html).toContain('name="password"');
     expect(html).not.toContain('obsidian://setuplivesync');
+  });
+
+  it('renders a QR that carries the setup URI', async () => {
+    const uri = 'obsidian://setuplivesync?settings=test';
+    const env = {
+      COUCHDB_PASSWORD: 'test-password',
+      SETUP_URI: uri,
+      SETUP_URI_PASSPHRASE: 'test-uri-passphrase',
+    } as AppEnv;
+    const ticket = await createSetupTicket('test-password');
+    const response = await landingPage(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: `__Host-livesync_setup=${ticket}` },
+    }), env);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('<figure class="qr">');
+    expect(html).toContain('id="v-uri"');
+    expect(decodePageQr(html)).toBe(uri);
+  });
+
+  it('still serves the setup URI when it is too large for a QR code', async () => {
+    const uri = `obsidian://setuplivesync?settings=${'x'.repeat(4_000)}`;
+    const env = {
+      COUCHDB_PASSWORD: 'test-password',
+      SETUP_URI: uri,
+      SETUP_URI_PASSPHRASE: 'test-uri-passphrase',
+    } as AppEnv;
+    const ticket = await createSetupTicket('test-password');
+    const response = await landingPage(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: `__Host-livesync_setup=${ticket}` },
+    }), env);
+    const html = await response.text();
+    expect(response.status).toBe(200);
+    expect(html).toContain('id="v-uri"');
+    expect(html).not.toContain('<figure class="qr">');
+  });
+
+  it('omits the QR when no setup URI is configured', async () => {
+    const env = { COUCHDB_PASSWORD: 'test-password', COUCHDB_USERNAME: 'admin' } as AppEnv;
+    const ticket = await createSetupTicket('test-password');
+    const response = await landingPage(new Request('https://pouch.test/', {
+      headers: { accept: 'text/html', cookie: `__Host-livesync_setup=${ticket}` },
+    }), env);
+    const html = await response.text();
+    expect(html).toContain('id="v-url"');
+    expect(html).not.toContain('<figure class="qr">');
+    expect(html).not.toContain('<svg');
   });
 });

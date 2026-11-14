@@ -89,6 +89,7 @@
     "pouchdb-adapter-sqlite-core": "npm:@robince/pouchdb-adapter-sqlite-core@1.1.2-cloudflare-do.1",
     "pouchdb-core": "^9.0.0",
     "pouchdb-replication": "^9.0.0",
+    "qrcode-generator": "2.0.4",
     "xxhash-wasm-102": "npm:xxhash-wasm@1.1.0",
     "yaml": "2.9.1"
   },
@@ -98,6 +99,7 @@
     "@types/markdown-it": "^14.2.0",
     "@types/node": "^24.0.0",
     "@types/pouchdb-core": "^7.0.15",
+    "jsqr": "1.4.0",
     "pouchdb-find": "^9.0.0",
     "pouchdb-mapreduce": "^9.0.0",
     "typescript": "^5.9.2",

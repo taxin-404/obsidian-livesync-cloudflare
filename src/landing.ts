@@ -1,4 +1,5 @@
 import type { AppEnv } from './types';
+import { qrSvg } from './qr';
 
 export const SETUP_TICKET_MAX_AGE_MS = 60_000;
 const SETUP_TICKET_VERSION = 'v1';
@@ -178,6 +179,15 @@ function page(title: string, body: string): string {
   form button { padding: 11px 12px; font-size: 14px; background: #5b5bd6; border-color: #5b5bd6; color: #fff; }
   form button:hover { background: #6a6ae0; }
   .error { margin: 0 0 12px; color: #ff8a8a; font-size: 13px; }
+  .qr {
+    margin: 0 0 16px; padding: 14px; text-align: center;
+    border: 1px solid #2a2a2a; border-radius: 10px; background: #1a1a1a;
+  }
+  .qr figcaption {
+    margin: 0 0 10px; color: #8a8a8a; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .06em;
+  }
+  .qr svg { display: block; width: 100%; height: auto; max-width: 320px; margin: 0 auto; border-radius: 6px; }
 </style>
 <main>${body}</main>
 </html>`;
@@ -204,9 +214,20 @@ function row(id: string, label: string, value: string, stacked = false): string 
   return `<div class="row${stacked ? ' stack' : ''}"><dt>${label}</dt><dd id="${id}">${escapeHtml(value)}</dd><button data-copy="${id}">Copy</button></div>`;
 }
 
+function qrFigure(text: string): string {
+  try {
+    return `<figure class="qr"><figcaption>Scan with LiveSync</figcaption>${qrSvg(text)}</figure>`;
+  } catch {
+    // A URI past the QR capacity must not take the whole page down; the text
+    // rows below still carry the setup details.
+    return '';
+  }
+}
+
 function setup(origin: string, env: AppEnv, clearCookie?: string): Response {
   const setupUri = env.SETUP_URI;
   const setupPassphrase = env.SETUP_URI_PASSPHRASE;
+  const qr = setupUri && setupPassphrase ? qrFigure(setupUri) : '';
   const rows = setupUri && setupPassphrase
     ? row('v-uri', 'Setup URI', setupUri, true) + row('v-pass', 'Passphrase', setupPassphrase)
     : [
@@ -219,6 +240,7 @@ function setup(origin: string, env: AppEnv, clearCookie?: string): Response {
     origin.replace(/^https?:\/\//, ''),
     `<h1>LiveSync</h1>
   <p class="sub">Setup</p>
+  ${qr}
   <dl>${rows}</dl>
 <script>
   document.addEventListener('click', (event) => {
