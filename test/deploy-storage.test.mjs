@@ -254,3 +254,44 @@ test('deployStorage propagates a deploy failure and removes the temporary file',
   assert.equal(code, 7);
   assert.deepEqual(temporaryConfigs(), []);
 });
+
+test('the R2 notice names the real error, not Wrangler progress output', async () => {
+  const mode = await resolveBackupMode(probeResult({
+    ok: false,
+    output: [
+      ' ⛅️ wrangler 4.152.0 (update available 4.162.0)',
+      '───────────────────────────────────────────────',
+      'Listing buckets...',
+      '',
+      '✘ [ERROR] R2 is not enabled for this account',
+    ].join('\n'),
+  }));
+  assert.equal(mode.noR2, true);
+  assert.match(mode.notice, /R2 is not enabled for this account/);
+  assert.doesNotMatch(mode.notice, /Listing buckets/);
+});
+
+test('deployStorage does not probe R2 for a dry run', async () => {
+  let probes = 0;
+  const seen = [];
+  const code = await deployStorage(['wrangler.jsonc', '', '--dry-run'], {
+    probeR2: async () => { probes++; return { ok: false, output: 'boom' }; },
+    spawn: deploySpy((config) => seen.push(config)),
+    sleep: async () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(probes, 0);
+  assert.deepEqual(seen, [], 'a dry run bundles the enabled config as-is');
+  assert.deepEqual(temporaryConfigs(), []);
+});
+
+test('deployStorage still reduces the config for --no-r2 --dry-run', async () => {
+  const seen = [];
+  const code = await deployStorage(['wrangler.jsonc', '', '--no-r2', '--dry-run'], {
+    probeR2: async () => { throw new Error('must not run'); },
+    spawn: deploySpy((config) => seen.push(config)),
+    sleep: async () => {},
+  });
+  assert.equal(code, 0);
+  assert.equal(seen[0].vars.BACKUP_ENABLED, 'false');
+});

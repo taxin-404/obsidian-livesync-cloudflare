@@ -40,7 +40,13 @@ function summarize(output) {
     .replace(/\u001b\[[0-9;]*m/g, '')
     .split('\n')
     .map(line => line.trim())
-    .filter(line => line && !/wrangler \d/i.test(line) && !/update available/i.test(line) && !/^[─\s]+$/.test(line));
+    .filter(line =>
+      line
+      && !/wrangler \d/i.test(line)
+      && !/update available/i.test(line)
+      && !/^[─\s]+$/.test(line)
+      && !/^(listing buckets|getting user settings)/i.test(line),
+    );
   return lines[0] || 'unknown error';
 }
 
@@ -120,7 +126,11 @@ export async function deployStorage(argv, { probeR2 = createR2Probe(), spawn = s
     throw error;
   }
   const requested = noR2 ? false : backupsRequested(text, environment);
-  const mode = await resolveBackupMode({ requested, noR2, requireR2, probeR2, sleep });
+  // A dry run bundles without deploying, so it never needs R2 and must stay
+  // credential-free (npm run dry-run), unlike a real deploy.
+  const mode = wranglerArgs.includes('--dry-run')
+    ? { noR2: noR2 || !requested, notice: null }
+    : await resolveBackupMode({ requested, noR2, requireR2, probeR2, sleep });
   if (mode.notice) console.log(mode.notice);
   const config = deploymentConfig(text, environment, { noR2: mode.noR2 });
   // Keep the copy beside the original so relative entrypoints and secret files still resolve.

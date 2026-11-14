@@ -59,6 +59,10 @@ guessing: those problems would have failed the deploy anyway. The account must
 be selectable, so export `CLOUDFLARE_ACCOUNT_ID` when the login can see more
 than one account.
 
+A `--dry-run` pass does not deploy, so it skips the check entirely and needs no
+account: `npm run dry-run` (and `npm run deploy -- --dry-run`) just bundle
+`wrangler.jsonc` as it is.
+
 **Force an outcome.** `--require-r2` stops rather than deploy without backups
 when the check fails; `--no-r2` skips the check and always deploys without
 backups. The two are mutually exclusive.
