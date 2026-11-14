@@ -239,6 +239,23 @@ setup URI device profile  ok
 vault connection          ok
 ```
 
+### Check for vaults sharing a sync target
+
+Two vaults on one machine that point at the same remote database fight over the
+same documents, and LiveSync cancels a vault's push while it has unresolved
+conflicts — the vault looks stuck. `vault:doctor` scans the vaults Obsidian
+knows about (plus any `--vault <dir>` or `--root <dir>` you name), prints each
+one's sync target and whether LiveSync is on, and exits non-zero when two vaults
+share a target. It only reads; it changes nothing.
+
+```sh
+npm run vault:doctor
+npm run vault:doctor -- --json
+```
+
+When it reports a collision, keep one vault on that target and turn LiveSync off
+in the others (LiveSync settings in those vaults); do not merge them.
+
 ### Rotation order (why it does not lock you out)
 
 1. stage the new local files — nothing is renamed yet;
