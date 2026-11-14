@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { readVault } from './livesync-config.mjs';
@@ -16,6 +17,22 @@ const REQUEST_TIMEOUT_MS = 15_000;
 
 export const DEFAULT_PASSWORD_FILE =
   process.env.LIVESYNC_PASSWORD_FILE ?? join(homedir(), '.config', 'obsidian-livesync', 'server-password');
+
+export const DEFAULT_PAGE_PASSWORD_FILE =
+  process.env.LIVESYNC_PAGE_PASSWORD_FILE ?? join(homedir(), '.config', 'obsidian-livesync', 'page-password');
+
+/**
+ * Reads an optional secret file. A separate page password is optional, so a
+ * missing file is normal and never an error.
+ */
+export async function readSecretFile(path) {
+  if (!path) return '';
+  try {
+    return (await readFile(path, 'utf8')).trim();
+  } catch {
+    return '';
+  }
+}
 
 export function flagValue(argv, index, flag) {
   const value = argv[index + 1];

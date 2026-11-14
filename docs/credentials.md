@@ -35,7 +35,7 @@ pushing new code can never invalidate a paired device.
 | Name | Required | Created by | Used for | If it is absent |
 | --- | --- | --- | --- | --- |
 | `COUCHDB_PASSWORD` | **yes** | you, a password generator, or `npm run rotate:password` | HTTP basic auth for every request from Obsidian | declared in `secrets.required`, so Wrangler reports it as missing; the Worker answers `503` instead of serving the vault |
-| `PAGE_PASSWORD` | no | you, but do not set it — rotation cannot keep it in sync | overrides the password that opens the connection-details page | the page falls back to `COUCHDB_PASSWORD` |
+| `PAGE_PASSWORD` | no | you; rotation leaves it unchanged | overrides the password that opens the connection-details page | the page falls back to `COUCHDB_PASSWORD` |
 | `SETUP_URI` | no | `scripts/generate-setup-uri.sh`, the plugin, or `npm run rotate:password` | makes the page show a setup URI (and QR code) instead of raw connection fields | the page shows URL, database, username and password instead |
 | `SETUP_URI_PASSPHRASE` | no | generated together with the URI | unlocks `SETUP_URI` for the device being onboarded | together with a missing URI, the page falls back to raw fields |
 
@@ -43,11 +43,12 @@ pushing new code can never invalidate a paired device.
 
 ### Rules for these values
 
-- **`PAGE_PASSWORD` must stay unset for rotation.** The Worker supports a
-  separate gate password, but `rotate:password` does not rewrite it: a matching
-  value fails after the password changes, and a different value fails before
-  anything is pushed. Either way the page would demand a value the tool cannot
-  keep in sync. With it unset, the page uses `COUCHDB_PASSWORD`.
+- **`PAGE_PASSWORD` is independent of `COUCHDB_PASSWORD`.** Set it to any value
+  you can remember: the page then asks for that value, while Obsidian keeps
+  using `COUCHDB_PASSWORD`. Rotation does not change the page password, so it
+  must be stored in its own file — `~/.config/obsidian-livesync/page-password`,
+  or passed with `--page-password-file`. Without that file, the tooling assumes
+  the page uses the server password.
 - **The setup URI and its passphrase must come from the same source.** Mismatched
   halves produce a page whose URI cannot be decrypted.
 - **The setup URI embeds the password.** A URI generated for `A` will not pair a
@@ -86,13 +87,14 @@ a variable in the dashboard is temporary; editing a secret there is permanent.
 
 ## Local files
 
-`.setup-uri`, `.dev.vars` and the password file are gitignored or outside the
+`.setup-uri`, `.dev.vars` and the password files are gitignored or outside the
 repository; `data.json` lives inside your vault and should never be committed.
 Modes are `600` where the tooling writes them.
 
 | Path | Written by | Contents | If it is lost |
 | --- | --- | --- | --- |
 | `~/.config/obsidian-livesync/server-password` | `rotate:password`, or by hand | the current `COUCHDB_PASSWORD`, plaintext | regenerate with `--rebuild`, or re-pair manually |
+| `~/.config/obsidian-livesync/page-password` | you, only when `PAGE_PASSWORD` is set | the current `PAGE_PASSWORD`, plaintext | reset the secret and the file together; devices are unaffected |
 | `.setup-uri` (repository root) | `scripts/generate-setup-uri.sh` | `vault_passphrase`, `uri_passphrase`, `id_recovery_code`, `uri` | re-run the script only for a *new* deployment; for an existing vault use the plugin's **Copy Setup URI** or the connection page |
 | `<vault>/.obsidian/plugins/obsidian-livesync/data.json` | the plugin, or `rotate:password` | the remote configuration with the password encrypted inside an envelope | re-pair the device |
 | `.dev.vars` | you, `cp .dev.vars.example .dev.vars` | `COUCHDB_PASSWORD` for local deploy and `wrangler dev` | recreate it |
@@ -165,19 +167,30 @@ vault passphrase, which cannot read the existing notes. Instead:
 - run `npm run rotate:password`, which regenerates all three values and updates
   the local vault in one verified step.
 
-### `PAGE_PASSWORD` — leave it unset
+### `PAGE_PASSWORD` — optional separate page password
 
-The Worker does support a separate password for the connection page
-(`PAGE_PASSWORD` overrides `COUCHDB_PASSWORD`), but the rotation tooling never
-rewrites it. If it equals the current password, rotation passes the preflight
-and then fails verification once the password changes; if it differs, rotation
-fails immediately. Either way the run rolls back.
-
-Leave it unset. If one is already set, delete it before rotating:
+The connection-details page can use its own password instead of the database
+password. Set the secret and keep the same value in
+`~/.config/obsidian-livesync/page-password` (mode 600) so the rotation and
+drift-check tools can open the page:
 
 ```sh
-npx wrangler secret delete PAGE_PASSWORD --name obsidian-sync
+openssl rand -hex 16
+printf '%s' '<the-value>' | npx wrangler secret put PAGE_PASSWORD --name obsidian-sync
+umask 077 && printf '%s\n' '<the-value>' > ~/.config/obsidian-livesync/page-password
 ```
+
+From then on:
+
+- the browser page accepts only `PAGE_PASSWORD`;
+- Obsidian keeps authenticating with `COUCHDB_PASSWORD`;
+- `rotate:password` changes the database password but leaves `PAGE_PASSWORD`
+  and its file alone, so the page keeps working;
+- `check:secrets` uses the page password for the page links and the server
+  password for the vault links.
+
+If the page password is lost, reset it: write a new value to the secret and the
+file together. This does not affect any paired device or the database password.
 
 ## What a deploy does and does not touch
 
@@ -229,11 +242,15 @@ vault connection          ok
 ### Rotation order (why it does not lock you out)
 
 1. stage the new local files — nothing is renamed yet;
-2. push and verify `SETUP_URI` and `SETUP_URI_PASSPHRASE`, checking the page
-   still opens with the **old** password;
+2. push and verify `SETUP_URI` and `SETUP_URI_PASSPHRASE`, opening the page with
+   `PAGE_PASSWORD` (or with the old `COUCHDB_PASSWORD` when no page password is
+   configured);
 3. push and verify `COUCHDB_PASSWORD`: new password → `200`, old password → `401`,
    page still serves the new URI whose embedded password matches;
 4. only then rename the staged files into place.
+
+`PAGE_PASSWORD` is never pushed or changed by rotation; its file is the reference
+the tool reads before and after.
 
 If a push fails, the secrets already replaced are re-pushed with their old values
 and no local file is touched. If the saved password is genuinely lost, use
@@ -247,6 +264,7 @@ replaces all three secrets, without pretending to roll back.
 | Page accepts no password; `/vault` returns `401` for old and new | a secret was changed on its own | `npm run rotate:password -- --vault <path> --rebuild` |
 | Page shows URL, database, username, password instead of a URI | `SETUP_URI` or its passphrase is not bound | generate and publish both, or delete both to keep the fallback |
 | Page shows a URI but the passphrase is rejected | the two halves came from different runs | re-publish both from the same source |
+| Page rejects the page password | `page-password` file is missing or stale | write the same value to `PAGE_PASSWORD` and `~/.config/obsidian-livesync/page-password`; devices are unaffected |
 | Phone gets `401`, desktop is fine | the phone still holds an older password | re-pair from a fresh QR code |
 | `wrangler secret put` rejects the URI as too large | full-settings URI over 5.1 kB | use `npm run rotate:password` (compact profile, 4800-byte guard) |
 | `.setup-uri` no longer pairs | it predates a rotation | take a fresh URI from the page or **Copy Setup URI** |

@@ -286,9 +286,10 @@ than one: add `--account-id <id>` to `rotate:password`, or export
 `CLOUDFLARE_ACCOUNT_ID` first. Without it the preflight fails before anything is
 written. If the Worker is not named `live`, pass `--worker <name>`.
 
-Both commands assume the page gate uses `COUCHDB_PASSWORD`: `PAGE_PASSWORD` must
-be unset, because rotation does not rewrite it and the page would keep demanding
-the old value.
+Both commands use the page gate stored in `~/.config/obsidian-livesync/page-password`
+when `PAGE_PASSWORD` is set, and fall back to `COUCHDB_PASSWORD` when it is not.
+Pass `--page-password-file` to point at a different file. Rotation reads the
+page with that password and leaves `PAGE_PASSWORD` unchanged.
 
 Local writes are staged first and renamed into place after verification. The
 verification retries for about ten seconds, because a Worker secret can take a

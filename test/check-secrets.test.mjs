@@ -37,6 +37,33 @@ test('reports every link green when the deployment is consistent', async () => {
   assert.ok(report.links.every((link) => link.ok && link.detail.length > 0));
 });
 
+test('uses a separate page password only for the page', async () => {
+  const vault = await fixture();
+  const report = await checkSecrets({
+    ...vault,
+    pagePassword: 'page-pass-1',
+    fetchAuth: async (password) => (password === vault.password ? 200 : 401),
+    fetchPage: async (password) =>
+      password === 'page-pass-1' ? page(await goodProfile(vault)) : '<html>sign in</html>',
+  });
+  assert.equal(report.ok, true);
+  assert.equal(report.links.find((link) => link.name === 'setup page gate').ok, true);
+  assert.equal(report.links.find((link) => link.name === 'server password').ok, true);
+});
+
+test('names the page password file when the gate rejects it', async () => {
+  const vault = await fixture();
+  const pagePasswordFile = `${vault.vaultDir}/missing-page-password`;
+  const report = await checkSecrets({
+    ...vault,
+    pagePasswordFile,
+    fetchAuth: async () => 200,
+    fetchPage: async () => '<html>sign in</html>',
+  });
+  assert.deepEqual(failed(report), ['setup page gate', 'setup URI password', 'setup URI device profile']);
+  assert.match(report.links.find((link) => link.name === 'setup page gate').detail, /missing-page-password/);
+});
+
 test('names the stale setup URI password', async () => {
   const vault = await fixture();
   const report = await checkSecrets({
@@ -173,6 +200,11 @@ test('names a remote entry that points at another server', async () => {
 
 test('parses the drift-check arguments', () => {
   assert.deepEqual(parseArgs(['--vault', '/v', '--json']), { vault: '/v', json: true });
+  assert.deepEqual(parseArgs(['--vault', '/v', '--page-password-file', '/pp']), {
+    vault: '/v',
+    json: false,
+    pagePasswordFile: '/pp',
+  });
   assert.throws(() => parseArgs(['--nope']), /unknown argument: --nope/);
   assert.throws(() => parseArgs(['--vault']), /--vault needs a value/);
 });

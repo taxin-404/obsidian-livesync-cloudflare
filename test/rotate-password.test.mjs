@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { chmod, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { encodeSetupUri, decodeSetupUri, readSetupPage, readVault } from '../scripts/livesync-config.mjs';
 import { fixture, pageHtml, profileFor, snapshot } from './helpers/vault-fixture.mjs';
@@ -24,7 +25,8 @@ async function deployment(vault, overrides = {}) {
   );
   let servedPassphrase = 'old-uri-pass';
   let passphraseLag = 0;
-  let gatePassword = overrides.gatePassword ?? vault.password;
+  let authPassword = overrides.authPassword ?? vault.password;
+  let gatePassword = overrides.pagePassword ?? overrides.gatePassword ?? authPassword;
 
   const putSecret = async (name, value) => {
     if (overrides.failOn === name) throw new Error('boom');
@@ -34,7 +36,11 @@ async function deployment(vault, overrides = {}) {
       servedPassphrase = value;
       passphraseLag = overrides.passphraseLag ?? 0;
     }
-    if (name === 'COUCHDB_PASSWORD') gatePassword = value;
+    if (name === 'COUCHDB_PASSWORD') {
+      authPassword = value;
+      // Without a separate page password the gate follows COUCHDB_PASSWORD.
+      if (!overrides.pagePassword) gatePassword = value;
+    }
   };
   const fetchPage = async (candidate) => {
     if (candidate !== gatePassword) return '<html>sign in</html>';
@@ -42,7 +48,7 @@ async function deployment(vault, overrides = {}) {
     if (passphraseLag > 0) passphraseLag--;
     return pageHtml(servedUri, passphrase);
   };
-  const fetchAuth = overrides.fetchAuth ?? (async (candidate) => (candidate === gatePassword ? 200 : 401));
+  const fetchAuth = overrides.fetchAuth ?? (async (candidate) => (candidate === authPassword ? 200 : 401));
 
   return { calls, putSecret, fetchPage, fetchAuth };
 }
@@ -93,9 +99,42 @@ test('rotates every secret and verifies before committing local files', async ()
   assert.equal(steps.includes(vault.password), false);
 });
 
+test('rotates with a separate page password and leaves it unchanged', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault, { pagePassword: 'page-pass-1' });
+  const result = await rotate({ ...vault, ...fake, pagePassword: 'page-pass-1' });
+
+  assert.deepEqual(fake.calls.map(([name]) => name), ['SETUP_URI', 'SETUP_URI_PASSPHRASE', 'COUCHDB_PASSWORD']);
+  assert.equal(await fake.fetchAuth(vault.password), 401, 'the old database password stops working');
+  assert.equal(await fake.fetchAuth(result.password), 200, 'the new database password works');
+  assert.equal(await fake.fetchAuth('page-pass-1'), 401, 'the page password is not a database password');
+  const served = readSetupPage(await fake.fetchPage('page-pass-1'));
+  assert.equal(served.uri, result.setupUri, 'the page still opens with the page password');
+});
+
+test('reads the page password from its own file', async () => {
+  const vault = await fixture();
+  const pagePasswordFile = join(vault.vaultDir, 'page-password');
+  await writeFile(pagePasswordFile, 'file-page-pass\n', { mode: 0o600 });
+  const fake = await deployment(vault, { pagePassword: 'file-page-pass' });
+  const result = await rotate({ ...vault, ...fake, pagePasswordFile });
+
+  assert.equal(await fake.fetchAuth(result.password), 200);
+  assert.equal(readSetupPage(await fake.fetchPage('file-page-pass')).uri, result.setupUri);
+});
+
+test('refuses to rotate when the page password is missing', async () => {
+  const vault = await fixture();
+  const fake = await deployment(vault, { pagePassword: 'page-pass-1' });
+  const before = await snapshot(vault);
+  await assert.rejects(() => rotate({ ...vault, ...fake }), /did not accept the page password/);
+  assert.deepEqual(fake.calls, []);
+  assert.deepEqual(await snapshot(vault), before);
+});
+
 test('rebuild replaces the setup pair and the password when the saved password is lost', async () => {
   const vault = await fixture();
-  const fake = await deployment(vault, { gatePassword: 'typed-in-the-dashboard' });
+  const fake = await deployment(vault, { gatePassword: 'typed-in-the-dashboard', authPassword: 'typed-in-the-dashboard' });
   const result = await rotate({ ...vault, ...fake, rebuild: true, verifyDelayMs: 1 });
 
   assert.deepEqual(fake.calls.map(([name]) => name), ['SETUP_URI', 'SETUP_URI_PASSPHRASE', 'COUCHDB_PASSWORD']);
@@ -208,7 +247,7 @@ test('refuses before touching the server when the page has no setup URI', async 
         fetchPage: async () => '<html>sign in</html>',
         fetchAuth: async () => 200,
       }),
-    /did not return a setup URI.*PAGE_PASSWORD/s,
+    /did not return a setup URI.*did not accept the page password/s,
   );
   assert.deepEqual(calls, []);
   assert.deepEqual(await snapshot(vault), before);
@@ -326,6 +365,18 @@ test('accepts a password file override, an account id and --rebuild', () => {
       accountId: 'abc',
     },
   );
+});
+
+test('accepts a separate page password file', () => {
+  assert.deepEqual(parseArgs(['--vault', '/v', '--page-password-file', '/pp']), {
+    vault: '/v',
+    worker: 'live',
+    dryRun: false,
+    rebuild: false,
+    force: false,
+    json: false,
+    pagePasswordFile: '/pp',
+  });
 });
 
 test('rejects an unknown flag and a missing value', () => {

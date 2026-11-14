@@ -11,7 +11,7 @@ import {
   readVault,
   serializeVault,
 } from './livesync-config.mjs';
-import { createAdapters, createSecretPutter, DEFAULT_PASSWORD_FILE, flagValue, printSteps } from './livesync-cli.mjs';
+import { createAdapters, createSecretPutter, DEFAULT_PAGE_PASSWORD_FILE, DEFAULT_PASSWORD_FILE, flagValue, printSteps, readSecretFile } from './livesync-cli.mjs';
 
 const crypto = globalThis.crypto ?? webcrypto;
 const PASSWORD_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -200,8 +200,8 @@ async function retryCheck(check, { attempts = VERIFY_ATTEMPTS, delayMs = VERIFY_
   throw new Error(`${lastError.message} (checked ${attempts} times)`);
 }
 
-async function verifyPageOnce({ fetchPage, password, setupUri, setupPassphrase, newPassword }) {
-  const { uri, passphrase } = readSetupPage(await fetchPage(password));
+async function verifyPageOnce({ fetchPage, pagePassword, setupUri, setupPassphrase, newPassword }) {
+  const { uri, passphrase } = readSetupPage(await fetchPage(pagePassword));
   if (uri !== setupUri) throw new Error('the gate page did not serve the rotated setup URI');
   if (passphrase !== setupPassphrase) throw new Error('the gate page did not serve the rotated setup passphrase');
   const served = await decodeSetupUri(uri, passphrase);
@@ -221,12 +221,12 @@ function verifyNewPassword(options) {
   return retryCheck(() => verifyPasswordOnce(options), options);
 }
 
-async function verifyPasswordOnce({ fetchAuth, fetchPage, previousPassword, password, setupUri, setupPassphrase }) {
+async function verifyPasswordOnce({ fetchAuth, fetchPage, previousPassword, password, pagePassword, setupUri, setupPassphrase }) {
   const newStatus = await fetchAuth(password);
   if (newStatus !== 200) throw new Error(`the server rejected the new password (status ${newStatus})`);
   const oldStatus = await fetchAuth(previousPassword);
   if (oldStatus !== 401) throw new Error('old password still authenticates — COUCHDB_PASSWORD was not replaced');
-  await verifyPage({ fetchPage, password, setupUri, setupPassphrase, newPassword: password });
+  await verifyPage({ fetchPage, pagePassword: pagePassword || password, setupUri, setupPassphrase, newPassword: password });
 }
 
 /**
@@ -260,6 +260,8 @@ export async function rotate(options) {
   const {
     vaultDir,
     passwordFile,
+    pagePassword: givenPagePassword,
+    pagePasswordFile,
     putSecret,
     fetchPage,
     fetchAuth,
@@ -284,6 +286,11 @@ export async function rotate(options) {
     throw new Error('vault password and password file disagree — run check:secrets');
   }
 
+  // The page gate is independent of the database password. When no separate
+  // page password is configured, the page follows COUCHDB_PASSWORD.
+  const separatePagePassword = givenPagePassword || (await readSecretFile(pagePasswordFile));
+  const pagePassword = separatePagePassword || previousPassword;
+
   const password = generatePassword(random);
   const setupPassphrase = generateSetupPassphrase(random);
 
@@ -298,12 +305,12 @@ export async function rotate(options) {
     }
     profile = profileFromVault(state);
   } else {
-    const html = await fetchPage(previousPassword);
+    const html = await fetchPage(pagePassword);
     try {
       page = readSetupPage(html);
     } catch (error) {
       throw new Error(
-        `${error.message} — the page must accept COUCHDB_PASSWORD (PAGE_PASSWORD blocks rotation: it is never rewritten, so unset it); if that password was lost, run with --rebuild`,
+        `${error.message} — the page did not accept the page password; set it in ${pagePasswordFile ?? 'the page password file'} or pass --page-password-file; if that password was lost, run with --rebuild`,
       );
     }
     try {
@@ -361,7 +368,7 @@ export async function rotate(options) {
       // serves the new pair before the password itself moves.
       await verifyPage({
         fetchPage,
-        password: previousPassword,
+        pagePassword,
         setupUri: built.uri,
         setupPassphrase,
         newPassword: password,
@@ -381,6 +388,7 @@ export async function rotate(options) {
       fetchPage,
       previousPassword,
       password,
+      pagePassword: separatePagePassword,
       setupUri: built.uri,
       setupPassphrase,
       attempts: verifyAttempts,
@@ -437,6 +445,9 @@ export function parseArgs(argv) {
     } else if (flag === '--password-file') {
       args.passwordFile = flagValue(argv, index, flag);
       index++;
+    } else if (flag === '--page-password-file') {
+      args.pagePasswordFile = flagValue(argv, index, flag);
+      index++;
     } else if (flag === '--account-id') {
       args.accountId = flagValue(argv, index, flag);
       index++;
@@ -462,6 +473,7 @@ async function main() {
   const result = await rotate({
     vaultDir: args.vault,
     passwordFile: args.passwordFile ?? DEFAULT_PASSWORD_FILE,
+    pagePasswordFile: args.pagePasswordFile ?? DEFAULT_PAGE_PASSWORD_FILE,
     putSecret: createSecretPutter(args.worker, args.accountId ?? process.env.CLOUDFLARE_ACCOUNT_ID),
     fetchPage: adapters.fetchPage,
     fetchAuth: adapters.fetchAuth,

@@ -1,17 +1,15 @@
-import { readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { decodeSetupUri, parseRemote, readSetupPage, readVault } from './livesync-config.mjs';
-import { createAdapters, DEFAULT_PASSWORD_FILE, flagValue, printReport } from './livesync-cli.mjs';
+import {
+  createAdapters,
+  DEFAULT_PAGE_PASSWORD_FILE,
+  DEFAULT_PASSWORD_FILE,
+  flagValue,
+  printReport,
+  readSecretFile,
+} from './livesync-cli.mjs';
 
 const link = (name, ok, detail) => ({ name, ok, detail });
-
-async function readPassword(passwordFile) {
-  try {
-    return (await readFile(passwordFile, 'utf8')).trim();
-  } catch {
-    return '';
-  }
-}
 
 function hostOf(uri) {
   try {
@@ -34,8 +32,18 @@ function remoteEntries(profile) {
  * drifted. Every detail is safe to print: no password, passphrase, key or URI
  * ever reaches it.
  */
-export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAuth }) {
-  const password = await readPassword(passwordFile);
+export async function checkSecrets({
+  vaultDir,
+  passwordFile,
+  pagePassword: givenPagePassword,
+  pagePasswordFile,
+  fetchPage,
+  fetchAuth,
+}) {
+  const password = await readSecretFile(passwordFile);
+  // A separate page password is optional. Without one, the page uses the
+  // server password, which is the original single-secret deployment.
+  const pagePassword = givenPagePassword || (await readSecretFile(pagePasswordFile)) || password;
 
   let state = null;
   let vaultError = null;
@@ -68,11 +76,11 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
 
   let page = null;
   let pageError = null;
-  if (!password) {
-    pageError = new Error('the password file is empty or missing');
+  if (!pagePassword) {
+    pageError = new Error('the page password file and the server password file are empty or missing');
   } else {
     try {
-      page = readSetupPage(await fetchPage(password));
+      page = readSetupPage(await fetchPage(pagePassword));
     } catch (error) {
       pageError = error;
     }
@@ -92,7 +100,7 @@ export async function checkSecrets({ vaultDir, passwordFile, fetchPage, fetchAut
       'setup page gate',
       profile !== null,
       pageError
-        ? pageError.message
+        ? `${pageError.message}${pagePasswordFile ? ` — check the page password in ${pagePasswordFile}` : ''}`
         : decodeError
           ? 'the setup URI did not decrypt with the passphrase shown on the page'
           : 'the page served a setup URI and the shown passphrase decrypted it',
@@ -200,6 +208,9 @@ export function parseArgs(argv) {
     } else if (flag === '--password-file') {
       args.passwordFile = flagValue(argv, index, flag);
       index++;
+    } else if (flag === '--page-password-file') {
+      args.pagePasswordFile = flagValue(argv, index, flag);
+      index++;
     } else if (flag === '--json') {
       args.json = true;
     } else {
@@ -216,6 +227,7 @@ async function main() {
   const report = await checkSecrets({
     vaultDir: args.vault,
     passwordFile: args.passwordFile ?? DEFAULT_PASSWORD_FILE,
+    pagePasswordFile: args.pagePasswordFile ?? DEFAULT_PAGE_PASSWORD_FILE,
     fetchPage: adapters.fetchPage,
     fetchAuth: adapters.fetchAuth,
   });
@@ -226,6 +238,7 @@ async function main() {
     if (!report.ok) {
       const flags = [`--vault ${shellQuote(args.vault)}`];
       if (args.passwordFile) flags.push(`--password-file ${shellQuote(args.passwordFile)}`);
+      if (args.pagePasswordFile) flags.push(`--page-password-file ${shellQuote(args.pagePasswordFile)}`);
       console.log(`\nFix: npm run rotate:password -- ${flags.join(' ')}`);
     }
   }

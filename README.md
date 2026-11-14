@@ -64,6 +64,9 @@ troubleshooting: **[docs/auto-deploy.md](docs/auto-deploy.md)**.
 Three kinds of value:
 
 - **you choose** `COUCHDB_PASSWORD` — the only required entry outside the repository;
+- **you may also choose** `PAGE_PASSWORD` — a separate password for the browser
+  page; store it in `~/.config/obsidian-livesync/page-password` so rotation can
+  still open the page;
 - **a script or the plugin generates** `SETUP_URI` and `SETUP_URI_PASSPHRASE` — optional,
   vault-specific, published as a pair to make the connection page a scannable QR code;
 - **the repository ships** everything else, re-applied on every deploy.
@@ -143,9 +146,11 @@ On the configured device: LiveSync settings → **Remote Configuration → Copy 
 A browser opening the Worker URL is asked for `PAGE_PASSWORD`, or for
 `COUCHDB_PASSWORD` when `PAGE_PASSWORD` is not set, before the page shows the
 setup URI and its passphrase (or, when those secrets are not bound, the URL,
-database, username and password). There is no session or cookie, so every visit
-asks again. If neither password exists the page returns 503 instead of exposing
-anything. Requests from the plugin, PouchDB or curl do not ask for HTML and
+database, username and password). To use a separate page password, set the
+`PAGE_PASSWORD` secret and keep the same value in
+`~/.config/obsidian-livesync/page-password` (mode 600); rotation leaves it
+unchanged. There is no session or cookie, so every visit asks again. If neither
+password exists the page returns 503 instead of exposing anything. Requests from the plugin, PouchDB or curl do not ask for HTML and
 still get the authenticated CouchDB surface.
 
 The server password, the setup URI and its passphrase have to agree, or the
@@ -164,9 +169,9 @@ printing a secret. The complete credential matrix is in
 [docs/credentials.md](docs/credentials.md). If Wrangler can see more than one
 Cloudflare account, add
 `--account-id <id>` to `rotate:password` or export `CLOUDFLARE_ACCOUNT_ID`; if
-the Worker is not named `live`, add `--worker <name>`. Both commands require the
-page gate to be `COUCHDB_PASSWORD`, so `PAGE_PASSWORD` must be unset — rotation
-does not rewrite it.
+the Worker is not named `live`, add `--worker <name>`. Both commands read a
+separate page password from `~/.config/obsidian-livesync/page-password` when
+`PAGE_PASSWORD` is set; pass `--page-password-file` to point elsewhere.
 
 If the password was changed outside this tool — in the Cloudflare dashboard, for
 example — no device can authenticate and the page cannot be opened, so a normal
